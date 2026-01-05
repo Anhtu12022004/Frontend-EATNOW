@@ -1,0 +1,8 @@
+/node_modoles
+/dist
+/build
+/.env
+/.env.local
+/.env.development
+/.env.production
+/.env.test
