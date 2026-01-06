@@ -78,10 +78,10 @@ export interface BranchApiResponse {
   name: string;
   address: string;
   phone: string;
-  image_url: string;
+  imageUrl: string;
   status: string;
-  open_time: string;
-  close_time: string;
+  openTime: string;
+  closeTime: string;
 }
 
 // ============ TABLES ============

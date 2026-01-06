@@ -48,6 +48,7 @@ function CustomerLayout() {
         onLogout={logout}
         onProfile={() => window.location.href = '/profile'}
         onReservation={() => window.location.href = '/reservation'}
+        onLogoClick={() => window.location.href = '/'}
       />
       <main className="flex-1">
         <Outlet />
