@@ -10,13 +10,15 @@ import { toast } from 'sonner';
 
 interface AuthPageProps {
   onLogin: (email: string, password: string) => void;
-  onRegister: (name: string, email: string, phone: string, password: string) => void;
+  onRegister: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; email?: string }>;
   onBack: () => void;
   onForgotPassword: () => void;
 }
 
 export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: AuthPageProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [activeTab, setActiveTab] = useState('login');
+  const [isRegistering, setIsRegistering] = useState(false);
   
   // Login state
   const [loginEmail, setLoginEmail] = useState('');
@@ -41,7 +43,7 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
     onLogin(loginEmail, loginPassword);
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!registerName || !registerEmail || !registerPhone || !registerPassword) {
       toast.error('Vui lòng nhập đầy đủ thông tin');
       return;
@@ -62,7 +64,33 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
       toast.error('Mật khẩu xác nhận không khớp');
       return;
     }
-    onRegister(registerName, registerEmail, registerPhone, registerPassword);
+    
+    setIsRegistering(true);
+    try {
+      const result = await onRegister(registerName, registerEmail, registerPhone, registerPassword);
+      
+      if (result.success) {
+        // Chuyển sang tab đăng nhập và điền email
+        setLoginEmail(result.email || registerEmail);
+        setLoginPassword('');
+        setActiveTab('login');
+        
+        // Reset form đăng ký
+        setRegisterName('');
+        setRegisterEmail('');
+        setRegisterPhone('');
+        setRegisterPassword('');
+        setRegisterConfirmPassword('');
+        
+        toast.success('Đăng ký thành công!', {
+          description: 'Vui lòng đăng nhập với tài khoản vừa tạo'
+        });
+      }
+    } catch (error) {
+      // Error is handled in App.tsx
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   return (
@@ -83,7 +111,7 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
 
         <Card>
           <CardHeader>
-            <Tabs defaultValue="login" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">Đăng nhập</TabsTrigger>
                 <TabsTrigger value="register">Đăng ký</TabsTrigger>
@@ -261,7 +289,7 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
                         className="pl-10"
                         value={registerConfirmPassword}
                         onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
+                        onKeyDown={(e) => e.key === 'Enter' && !isRegistering && handleRegister()}
                       />
                     </div>
                   </div>
@@ -269,8 +297,9 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
                   <Button
                     className="w-full bg-primary hover:bg-primary/90"
                     onClick={handleRegister}
+                    disabled={isRegistering}
                   >
-                    Đăng ký
+                    {isRegistering ? 'Đang đăng ký...' : 'Đăng ký'}
                   </Button>
 
                   <p className="text-xs text-center text-muted-foreground">

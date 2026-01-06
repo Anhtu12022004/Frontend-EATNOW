@@ -278,28 +278,27 @@ export default function App() {
     // });
   };
 
-  const handleRegister = async (name: string, email: string, phone: string, password: string) => {
-    // TODO: Replace with actual API call
-    // const response = await authService.register({ name, email, phone, password });
-    
-    // Mock register - Always customer role for new registrations
-    const newCustomer: Customer = {
-      id: 'c' + Date.now(),
-      name: name,
-      email: email,
-      phone: phone,
-      joinedDate: new Date()
-    };
-    
-    setCustomer(newCustomer);
-    setUserRole('customer');
-    setIsLoggedIn(true);
-    saveAuthToStorage(newCustomer, 'customer');
-    setCurrentPage('landing');
-    
-    toast.success('Đăng ký thành công!', {
-      description: `Chào mừng ${newCustomer.name} đến với EATNOW`
-    });
+  const handleRegister = async (name: string, email: string, phone: string, password: string): Promise<{ success: boolean; email?: string }> => {
+    try {
+      const response = await authService.register({ fullName: name, email, phone, password });
+      
+      // Trả về success để AuthPage chuyển sang tab login
+      return {
+        success: true,
+        email: response.email
+      };
+    } catch (error) {
+      let errorMessage = 'Đăng ký thất bại';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      toast.error('Đăng ký thất bại', {
+        description: errorMessage
+      });
+      
+      return { success: false };
+    }
   };
 
   const handleLogout = () => {

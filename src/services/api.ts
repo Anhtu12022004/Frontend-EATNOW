@@ -2,10 +2,12 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5214/api';
 
 // Types
+// Response wrapper giữ nguyên cấu trúc backend trả về
 interface ApiResponse<T> {
   data: T;
   message?: string;
   success: boolean;
+  token?: string; // Cho login response
 }
 
 interface ApiError {
@@ -69,11 +71,20 @@ class ApiClient {
         throw error;
       }
 
-      return {
-        data: data.data || data,
+      // Giữ nguyên cấu trúc response từ backend
+      // Backend trả về: { data: ..., message: ..., success: ..., token?: ... }
+      const result: ApiResponse<T> = {
+        data: data.data,
         message: data.message,
-        success: true,
+        success: data.success,
       };
+      
+      // Chỉ thêm token nếu backend trả về
+      if (data.token !== undefined) {
+        result.token = data.token;
+      }
+      
+      return result;
     } catch (error) {
       if ((error as ApiError).status) {
         throw error;
@@ -139,10 +150,11 @@ class ApiClient {
       } as ApiError;
     }
 
+    // Giữ nguyên cấu trúc response từ backend
     return {
-      data: data.data || data,
+      data: data.data,
       message: data.message,
-      success: true,
+      success: data.success,
     };
   }
 }
