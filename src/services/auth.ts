@@ -1,4 +1,4 @@
-import { apiClient, ApiResponse, ApiError } from './api';
+import { apiClient, ApiError } from './api';
 import { Customer, UserRole } from '../types';
 
 interface LoginRequest {
@@ -6,20 +6,27 @@ interface LoginRequest {
   password: string;
 }
 
-interface JWTPayload {
-  userId?: string;
-  email: string;
-  phone: string;
-  role: UserRole;
-  iat?: number;
-  exp?: number;
-}
-
 interface RegisterRequest {
-  name: string;
+  fullName: string;
   email: string;
   phone: string;
   password: string;
+}
+
+interface LoginApiResponse {
+  token: string;
+  data: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    address: string | null;
+    status: string;
+    createdAt: string;
+    role: string; // 'Customer', 'Staff', 'Admin', 'SuperAdmin'
+  };
+  message: string;
+  success: boolean;
 }
 
 interface AuthResponse {
@@ -28,148 +35,57 @@ interface AuthResponse {
   token: string;
 }
 
+interface RegisterApiResponse {
+  data: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    address: string | null;
+    status: string;
+    createdAt: string;
+    role: string;
+  };
+  message: string;
+  success: boolean;
+}
+
+interface RegisterResponse {
+  success: boolean;
+  message: string;
+  email: string; // Trả về email để tự động điền vào form login
+}
+
 class AuthService {
   /**
-   * Mã hóa JWT token (Base64Url encoding)
-   * @param payload Dữ liệu cần mã hóa (user, role, ...)
-   * @param secret Secret key để ký token (tuỳ chọn)
-   * @returns JWT token
+   * Map role string từ backend sang UserRole
    */
-  private encodeJWT(payload: JWTPayload, secret: string = 'your-secret-key'): string {
-    // Header
-    const header = {
-      alg: 'HS256',
-      typ: 'JWT'
+  private mapRole(backendRole: string): UserRole {
+    const roleMap: Record<string, UserRole> = {
+      'customer': 'customer',
+      'Customer': 'customer',
+      'staff': 'staff',
+      'Staff': 'staff',
+      'admin': 'admin',
+      'Admin': 'admin',
+      'superadmin': 'superadmin',
+      'SuperAdmin': 'superadmin'
     };
-
-    // Payload
-    const now = Math.floor(Date.now() / 1000);
-    const payloadWithTimestamp = {
-      ...payload,
-      iat: payload.iat || now,
-      exp: payload.exp || (now + 24 * 60 * 60) // Token hết hạn sau 24 giờ
-    };
-
-    // Encode header và payload thành Base64Url
-    const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
-    const encodedPayload = this.base64UrlEncode(JSON.stringify(payloadWithTimestamp));
-
-    // Tạo signature
-    const message = `${encodedHeader}.${encodedPayload}`;
-    const signature = this.base64UrlEncode(
-      this.hmacSHA256(message, secret)
-    );
-
-    // Trả về JWT token đầy đủ
-    return `${message}.${signature}`;
+    return roleMap[backendRole] || 'customer';
   }
 
   /**
-   * Base64Url encoding
+   * Chuyển đổi user từ API response sang Customer object
    */
-  private base64UrlEncode(str: string): string {
-    return btoa(str)
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
-  }
-
-  /**
-   * HMAC SHA256 (đơn giản hóa - trong production dùng thư viện crypto)
-   */
-  private hmacSHA256(message: string, secret: string): string {
-    // Trong thực tế, bạn nên dùng thư viện 'jose' hoặc 'crypto-js'
-    // Đây là một phiên bản đơn giản hóa
-    return btoa(message + secret).slice(0, 43);
-  }
-
-  /**
-   * Decode JWT token
-   * @param token JWT token
-   * @returns Decoded payload
-   */
-  private decodeJWT(token: string): JWTPayload | null {
-    try {
-      const parts = token.split('.');
-      if (parts.length !== 3) return null;
-
-      const decoded = atob(
-        parts[1].replace(/-/g, '+').replace(/_/g, '/')
-      );
-      return JSON.parse(decoded);
-    } catch (error) {
-      console.error('Error decoding JWT:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Normalize token payload - Loại bỏ các đường dẫn Microsoft Claims
-   * @param payload Raw payload từ token
-   * @returns Normalized payload
-   */
-  private normalizeTokenPayload(payload: any): JWTPayload {
-    const normalized: any = {};
-
-    // Mapping các trường Microsoft Claims sang tên đơn giản
-    const claimsMapping: Record<string, string> = {
-      // Microsoft Claims
-      'http://schemas.microsoft.com/ws/2008/06/identity/claims/role': 'role',
-      'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress': 'email',
-      'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier': 'userId',
-      
-      // Standard claims
-      'aud': 'aud',
-      'iss': 'iss',
-      'iat': 'iat',
-      'exp': 'exp',
-      'role': 'role',
-      'email': 'email',
-      'userId': 'userId',
-      'sub': 'userId'
-    };
-
-    // Duyệt qua tất cả các trường trong payload
-    for (const [key, value] of Object.entries(payload)) {
-      // Nếu có mapping, dùng tên đơn giản
-      if (claimsMapping[key]) {
-        const simpleName = claimsMapping[key];
-        // Nếu chưa có trường này, gán giá trị
-        if (!normalized[simpleName]) {
-          normalized[simpleName] = value;
-        }
-      }
-      // Nếu không có mapping và không phải URI dài, giữ lại
-      else if (!key.startsWith('http://') && !key.startsWith('https://')) {
-        normalized[key] = value;
-      }
-    }
-
-    // Đảm bảo các trường bắt buộc
+  private mapUserResponse(apiUser: LoginApiResponse['data']): Customer {
     return {
-      userId: normalized.userId || normalized.sub,
-      name: normalized.name || 'User',
-      email: normalized.email || '',
-      phone: normalized.phone || '',
-      role: normalized.role || 'customer',
-      iat: normalized.iat,
-      exp: normalized.exp
-    };
-  }
-
-  /**
-   * Tạo user object từ decoded token
-   * @param decodedToken Token đã decode
-   * @returns Customer object
-   */
-  private createUserFromToken(decodedToken: JWTPayload): Customer {
-    return {
-      id: decodedToken.userId || '',
-      name: 'User',
-      email: decodedToken.email || '',
-      phone: decodedToken.phone || '',
-      address: decodedToken.email || '',
-      joinedDate: decodedToken.iat ? new Date(decodedToken.iat * 1000) : new Date()
+      id: apiUser.id,
+      name: apiUser.fullName,
+      email: apiUser.email,
+      phone: apiUser.phone,
+      address: apiUser.address || undefined,
+      joinedDate: new Date(apiUser.createdAt),
+      status: apiUser.status
     };
   }
   /**
@@ -179,38 +95,32 @@ class AuthService {
    */
   async login(credentials: LoginRequest): Promise<AuthResponse> {
     try {
-      const response = await apiClient.post<{ token: string }>('/auth/login', credentials);
+      const response = await apiClient.post<LoginApiResponse['data']>('/auth/login', credentials);
       console.log('Login response:', response);
 
-      // Lấy token từ response
-      const token = response.data.token;
+      // Kiểm tra xem backend trả về success hay không
+      if (!response.success) {
+        throw new Error(response.message || 'Đăng nhập thất bại');
+      }
+
+      const token = (response as any).token;
+      const apiUser = response.data;
+
       if (!token) {
         throw new Error('Token không được trả về từ server');
       }
 
-      // Decode token
-      const decodedToken = this.decodeJWT(token);
-      if (!decodedToken) {
-        throw new Error('Không thể decode token');
+      if (!apiUser) {
+        throw new Error('Dữ liệu người dùng không được trả về từ server');
       }
 
-      console.log('Decoded token (raw):', decodedToken);
+      // Map role từ backend response
+      const role = this.mapRole(apiUser.role);
 
-      // Normalize payload - loại bỏ các đường dẫn Microsoft Claims
-      const normalizedToken = this.normalizeTokenPayload(decodedToken);
-      console.log('Decoded token (normalized):', normalizedToken);
+      // Chuyển đổi user từ API response
+      const user = this.mapUserResponse(apiUser);
 
-      // Xác định role từ normalized token
-      const role = (normalizedToken.role?.toLowerCase() === 'customer' ? 'customer' 
-                  : normalizedToken.role?.toLowerCase() === 'staff' ? 'staff'
-                  : normalizedToken.role?.toLowerCase() === 'admin' ? 'admin'
-                  : normalizedToken.role?.toLowerCase() === 'superadmin' ? 'superadmin'
-                  : 'customer') as UserRole;
-
-      // Tạo user object từ token
-      const user = this.createUserFromToken(normalizedToken);
-
-      // Tạo AuthResponse object với token, role, user
+      // Tạo AuthResponse object
       const authResponse: AuthResponse = {
         user,
         role,
@@ -237,9 +147,9 @@ class AuthService {
       }
       
       // Xử lý trường hợp backend trả về lỗi chung chung
-      if (errorMessage.toLowerCase().includes('network')) {
-        errorMessage = 'Email hoặc mật khẩu không chính xác. Vui lòng thử lại.';
-      }
+      // if (errorMessage.toLowerCase().includes('network')) {
+      //   errorMessage = 'Email hoặc mật khẩu không chính xác. Vui lòng thử lại.';
+      // }
       
       console.error('Login error:', {
         message: errorMessage,
@@ -255,18 +165,26 @@ class AuthService {
   /**
    * Đăng ký tài khoản mới
    * @param data Thông tin đăng ký
-   * @returns User data, role, và JWT token
+   * @returns Success status và email để redirect sang login
    */
-  async register(data: RegisterRequest): Promise<AuthResponse> {
+  async register(data: RegisterRequest): Promise<RegisterResponse> {
     try {
-      const response = await apiClient.post<AuthResponse>('/auth/register', data);
+      const response = await apiClient.post<RegisterApiResponse['data']>('/auth/register', data);
+      console.log('Register response:', response);
       
-      // Lưu token vào localStorage và set Authorization header
-      if (response.data.token) {
-        apiClient.setToken(response.data.token);
+      // Kiểm tra xem backend trả về success hay không
+      if (!response.success) {
+        throw new Error(response.message || 'Đăng ký thất bại');
       }
+
+      // Khi thành công, response.data là user object
+      const userData = response.data;
       
-      return response.data;
+      return {
+        success: true,
+        message: response.message || 'Đăng ký thành công',
+        email: userData?.email || data.email
+      };
     } catch (error) {
       const apiError = error as ApiError;
       throw new Error(apiError.message || 'Đăng ký thất bại');
