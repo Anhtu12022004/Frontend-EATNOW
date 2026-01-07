@@ -29,7 +29,7 @@ export function BranchListPage({ onViewMenu }: BranchListPageProps) {
         setError(null);
         
         // Gọi API lấy tất cả branches
-        const allBranches = await branchService.getAllBranches();
+        const allBranches = await branchService.getAllBranches({ active: true });
         setBranches(allBranches);
       } catch (err) {
         console.error('Error fetching branches:', err);

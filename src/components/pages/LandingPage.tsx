@@ -35,7 +35,7 @@ export function LandingPage({ onViewMenu, onAddToCart, onViewBranches }: Landing
         // Gọi API lấy chi nhánh gần nhất
         // const branches = await branchService.getNearbyBranches(3);
 
-        const branches = await branchService.getAllBranches();
+        const branches = await branchService.getAllBranches({ active: true, limit: 3 });
         setNearbyBranches(branches);
       } catch (error) {
         console.error('Error fetching nearby branches:', error);

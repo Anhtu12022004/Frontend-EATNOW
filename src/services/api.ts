@@ -71,20 +71,37 @@ class ApiClient {
         throw error;
       }
 
-      // Giữ nguyên cấu trúc response từ backend
-      // Backend trả về: { data: ..., message: ..., success: ..., token?: ... }
-      const result: ApiResponse<T> = {
-        data: data.data,
-        message: data.message,
-        success: data.success,
-      };
+      // Xử lý response từ backend
+      // Trường hợp 1: Backend trả về object wrapped: { data: ..., message: ..., success: ..., token?: ... }
+      // Trường hợp 2: Backend trả về data trực tiếp (array hoặc object không có field data/success)
       
-      // Chỉ thêm token nếu backend trả về
-      if (data.token !== undefined) {
-        result.token = data.token;
+      const isWrappedResponse = data !== null && 
+                                typeof data === 'object' && 
+                                !Array.isArray(data) && 
+                                'success' in data;
+      
+      if (isWrappedResponse) {
+        // Response được wrap bởi backend
+        const result: ApiResponse<T> = {
+          data: data.data,
+          message: data.message,
+          success: data.success,
+        };
+        
+        // Chỉ thêm token nếu backend trả về
+        if (data.token !== undefined) {
+          result.token = data.token;
+        }
+        
+        return result;
+      } else {
+        // Response là data trực tiếp (không wrapped)
+        return {
+          data: data as T,
+          message: undefined,
+          success: true,
+        };
       }
-      
-      return result;
     } catch (error) {
       if ((error as ApiError).status) {
         throw error;

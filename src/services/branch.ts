@@ -16,6 +16,7 @@ interface BranchQueryParams {
   search?: string;
   sortBy?: 'rating' | 'distance' | 'name';
   sortOrder?: 'asc' | 'desc';
+  active?: boolean; // Nếu true, chỉ lấy chi nhánh có status = "ACTIVE"
 }
 
 /**
@@ -24,18 +25,19 @@ interface BranchQueryParams {
  * @returns Branch object cho frontend
  */
 function mapBranchResponse(apiResponse: BranchApiResponse): Branch {
+  console.log('API Response branch:', apiResponse);
   return {
     id: String(apiResponse.id),
     name: apiResponse.name,
     address: apiResponse.address,
     phone: apiResponse.phone,
-    image: apiResponse.image_url,
-    image_url: apiResponse.image_url,
+    image: apiResponse.imageUrl,
+    image_url: apiResponse.imageUrl,
     status: apiResponse.status,
-    open_time: apiResponse.open_time,
-    close_time: apiResponse.close_time,
+    open_time: apiResponse.openTime,
+    close_time: apiResponse.closeTime,
     // Computed field: ghép open_time và close_time thành hours
-    hours: `${formatTime(apiResponse.open_time)} - ${formatTime(apiResponse.close_time)}`,
+    hours: `${formatTime(apiResponse.openTime)} - ${formatTime(apiResponse.closeTime)}`,
     // Các field mặc định (có thể được cập nhật sau từ API khác)
     rating: 4.5,
     district: extractDistrict(apiResponse.address)
@@ -46,7 +48,7 @@ function mapBranchResponse(apiResponse: BranchApiResponse): Branch {
  * Format time từ "HH:mm:ss" sang "HH:mm"
  */
 function formatTime(time: string): string {
-  if (!time) return '';
+  // if (!time) return '';
   // Nếu format là "HH:mm:ss", chỉ lấy "HH:mm"
   const parts = time.split(':');
   if (parts.length >= 2) {
@@ -73,19 +75,22 @@ class BranchService {
    */
   async getAllBranches(params?: BranchQueryParams): Promise<Branch[]> {
     try {
-      const queryParams: Record<string, string> = {};
+      const response = await apiClient.get<BranchApiResponse[]>('/eatnow/branches');
       
-      if (params?.page) queryParams.page = String(params.page);
-      if (params?.limit) queryParams.limit = String(params.limit);
-      if (params?.district) queryParams.district = params.district;
-      if (params?.search) queryParams.search = params.search;
-      if (params?.sortBy) queryParams.sortBy = params.sortBy;
-      if (params?.sortOrder) queryParams.sortOrder = params.sortOrder;
-
-      //const response = await apiClient.get<BranchApiResponse[]>('/branches', queryParams);
-      const response = await apiClient.get<BranchApiResponse[]>('/branch');
       // Map response từ backend sang format frontend
-      return response.data.map(mapBranchResponse);
+      let branches = response.data.map(mapBranchResponse);
+      
+      // Nếu active = true, chỉ lấy chi nhánh có status = "ACTIVE"
+      if (params?.active) {
+        branches = branches.filter(branch => branch.status === 'ACTIVE');
+      }
+      
+      // Nếu có limit parameter, chỉ lấy số lượng cần thiết
+      if (params?.limit) {
+        branches = branches.slice(0, params.limit);
+      }
+      
+      return branches;
     } catch (error) {
       const apiError = error as ApiError;
       console.error('Error fetching branches:', apiError);
@@ -120,7 +125,8 @@ class BranchService {
    */
   async getBranchById(branchId: string): Promise<Branch> {
     try {
-      const response = await apiClient.get<BranchApiResponse>(`/branches/${branchId}`);
+      // API: http://localhost:5214/api/eatnow/branch/{id_branch}
+      const response = await apiClient.get<BranchApiResponse>(`/eatnow/branch/${branchId}`);
       return mapBranchResponse(response.data);
     } catch (error) {
       const apiError = error as ApiError;
@@ -162,6 +168,54 @@ class BranchService {
       const apiError = error as ApiError;
       console.error('Error searching branches:', apiError);
       throw new Error(apiError.message || 'Không thể tìm kiếm chi nhánh');
+    }
+  }
+
+  /**
+   * Thêm chi nhánh mới
+   * @param data Thông tin chi nhánh mới
+   * @returns Chi nhánh vừa tạo
+   */
+  async createBranch(data: {
+    name: string;
+    address: string;
+    phone: string;
+    imageUrl: string;
+    openTime: string;
+    closeTime: string;
+  }): Promise<Branch> {
+    try {
+      const response = await apiClient.post<BranchApiResponse>('/eatnow/branch', data);
+      return mapBranchResponse(response.data);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error creating branch:', apiError);
+      throw new Error(apiError.message || 'Không thể tạo chi nhánh mới');
+    }
+  }
+
+  /**
+   * Cập nhật chi nhánh
+   * @param data Thông tin chi nhánh cần cập nhật
+   * @returns Chi nhánh đã cập nhật
+   */
+  async updateBranch(data: {
+    id: string;
+    name: string;
+    address: string;
+    phone: string;
+    imageUrl: string;
+    status: string;
+    openTime: string;
+    closeTime: string;
+  }): Promise<Branch> {
+    try {
+      const response = await apiClient.put<BranchApiResponse>('/eatnow/branch', data);
+      return mapBranchResponse(response.data);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error updating branch:', apiError);
+      throw new Error(apiError.message || 'Không thể cập nhật chi nhánh');
     }
   }
 }

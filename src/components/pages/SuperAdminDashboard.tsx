@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, DollarSign, ShoppingBag, Users, MapPin, TrendingUp, LayoutDashboard, BarChart3, MessageSquare, Brain, LogOut } from 'lucide-react';
+import { Building2, DollarSign, ShoppingBag, Users, MapPin, TrendingUp, LayoutDashboard, BarChart3, MessageSquare, Brain, LogOut, UtensilsCrossed } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -11,6 +11,7 @@ import { UserManagement } from './UserManagement';
 import { RevenueAnalytics } from './RevenueAnalytics';
 import { FeedbackManagement } from './FeedbackManagement';
 import { AIInsightsPage } from './AIInsightsPage';
+import { SystemMenuManagement } from './SystemMenuManagement';
 import { Rating, Order } from '../../types';
 
 const systemStats = {
@@ -92,6 +93,10 @@ export function SuperAdminDashboard({
             <TabsTrigger value="users">
               <Users className="h-4 w-4 mr-2" />
               Quản lý người dùng
+            </TabsTrigger>
+            <TabsTrigger value="menu">
+              <UtensilsCrossed className="h-4 w-4 mr-2" />
+              Quản lý menu
             </TabsTrigger>
             <TabsTrigger value="feedback">
               <MessageSquare className="h-4 w-4 mr-2" />
@@ -314,6 +319,10 @@ export function SuperAdminDashboard({
 
           <TabsContent value="users">
             <UserManagement />
+          </TabsContent>
+
+          <TabsContent value="menu">
+            <SystemMenuManagement />
           </TabsContent>
 
           <TabsContent value="feedback">

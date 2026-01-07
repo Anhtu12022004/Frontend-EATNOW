@@ -16,6 +16,7 @@ interface HeaderProps {
   onLogout?: () => void;
   onProfile?: () => void;
   onReservation?: () => void;
+  onLogoClick?: () => void;
 }
 
 export function Header({ 
@@ -27,7 +28,8 @@ export function Header({
   onLogin,
   onLogout,
   onProfile,
-  onReservation
+  onReservation,
+  onLogoClick = () => window.location.href = '/'
 }: HeaderProps) {
   const getInitials = (name: string) => {
     return name
@@ -46,7 +48,11 @@ export function Header({
             <button className="lg:hidden" onClick={onMenuClick}>
               <Menu className="h-6 w-6" />
             </button>
-            <div className="flex items-center gap-2">
+            <button 
+              type="button"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+              onClick={onLogoClick}
+            >
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
                 <Coffee className="h-6 w-6 text-primary-foreground" />
               </div>
@@ -58,7 +64,7 @@ export function Header({
                   Order • Manage • Serve
                 </div>
               </div>
-            </div>
+            </button>
           </div>
 
           {/* Search Bar - Hidden on mobile */}

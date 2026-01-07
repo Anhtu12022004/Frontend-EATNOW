@@ -9,16 +9,46 @@ export interface MenuItemApiResponse {
   name: string;
   description: string;
   price: number;
-  category_id: number;
+  category: number;
   category_name?: string;
-  image_url: string;
-  is_active: boolean;
-  best_seller: boolean;
-  is_new: boolean;
+  imageUrl: string;
+  isActive: boolean;
+  isBestSeller: boolean;
+  isNew: boolean;
   // From branch_dish join
   branch_dish_id?: number;
   branch_price?: number;
   is_available?: boolean;
+}
+
+/**
+ * Interface cho response best seller dishes API (camelCase)
+ */
+export interface BestSellerDishApiResponse {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  price: number;
+  isBestSeller: boolean;
+  isNew: boolean;
+  isActive: boolean;
+  category: string;
+}
+
+/**
+ * Interface cho response branch dishes API (camelCase)
+ */
+export interface BranchDishApiResponse {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  price: number;
+  isBestSeller: boolean;
+  isNew: boolean;
+  isAvailable: boolean;
+  category: string;
 }
 
 interface MenuQueryParams {
@@ -57,18 +87,36 @@ class MenuService {
    * @param params Query parameters để filter
    * @returns Danh sách món ăn
    */
-  async getAllMenuItems(params?: MenuQueryParams): Promise<MenuItem[]> {
+  async getAllMenuItems(): Promise<MenuItem[]> {
     try {
-      const queryParams: Record<string, string> = {};
+      // const queryParams: Record<string, string> = {};
       
-      if (params?.page) queryParams.page = String(params.page);
-      if (params?.limit) queryParams.limit = String(params.limit);
-      if (params?.categoryId) queryParams.categoryId = String(params.categoryId);
-      if (params?.isBestseller !== undefined) queryParams.isBestseller = String(params.isBestseller);
-      if (params?.isActive !== undefined) queryParams.isActive = String(params.isActive);
+      // if (params?.page) queryParams.page = String(params.page);
+      // if (params?.limit) queryParams.limit = String(params.limit);
+      // if (params?.categoryId) queryParams.categoryId = String(params.categoryId);
+      // if (params?.isBestseller !== undefined) queryParams.isBestseller = String(params.isBestseller);
+      // if (params?.isActive !== undefined) queryParams.isActive = String(params.isActive);
 
-      const response = await apiClient.get<MenuItemApiResponse[]>('/dishes', queryParams);
-      return response.data.map(mapMenuItemResponse);
+      const response = await apiClient.get<MenuItemApiResponse[]>('/eatnow/dishes');
+
+      // Map response từ backend sang format frontend
+      let dishes = response.data.map(dish => ({
+        id: dish.id,
+        name: dish.name,
+        description: dish.description || '',
+        price: dish.price,
+        category: dish.category || '',
+        image: dish.imageUrl || '',
+        available: dish.isActive,
+        bestSeller: dish.isBestSeller,
+        isNew: dish.isNew
+      }));
+
+      // Sort theo category
+      dishes.sort((a, b) => a.category.localeCompare(b.category, 'vi'));
+
+      return dishes;
+
     } catch (error) {
       const apiError = error as ApiError;
       console.error('Error fetching menu items:', apiError);
@@ -79,15 +127,37 @@ class MenuService {
   /**
    * Lấy các món best seller
    * @param limit Số lượng món muốn lấy (mặc định 4)
+   * @param isActive Nếu true, chỉ lấy món đang hoạt động
    * @returns Danh sách món best seller
    */
-  async getBestSellerItems(limit: number = 4): Promise<MenuItem[]> {
+  async getBestSellerItems(limit: number = 4, isActive?: boolean): Promise<MenuItem[]> {
     try {
-      const response = await apiClient.get<MenuItemApiResponse[]>('/dishes', {
-        isBestseller: 'true',
-        limit: String(limit)
-      });
-      return response.data.map(mapMenuItemResponse);
+      const response = await apiClient.get<BestSellerDishApiResponse[]>('/eatnow/dishes/best-sellers');
+      
+      // Map response từ backend sang format frontend
+      let dishes = response.data.map(dish => ({
+        id: dish.id,
+        name: dish.name,
+        description: dish.description || '',
+        price: dish.price,
+        category: dish.category || '',
+        image: dish.imageUrl || '',
+        available: dish.isActive,
+        bestSeller: dish.isBestSeller,
+        isNew: dish.isNew
+      }));
+      
+      // Nếu isActive = true, chỉ lấy món đang hoạt động
+      if (isActive) {
+        dishes = dishes.filter(dish => dish.available);
+      }
+      
+      // Chỉ lấy số lượng cần thiết theo limit
+      if (limit) {
+        dishes = dishes.slice(0, limit);
+      }
+      
+      return dishes;
     } catch (error) {
       const apiError = error as ApiError;
       console.error('Error fetching best seller items:', apiError);
@@ -102,8 +172,27 @@ class MenuService {
    */
   async getMenuItemsByBranch(branchId: string): Promise<MenuItem[]> {
     try {
-      const response = await apiClient.get<MenuItemApiResponse[]>(`/branches/${branchId}/dishes`);
-      return response.data.map(mapMenuItemResponse);
+      // http://localhost:5214/api/eatnow/branch-dishes/12ab344d-58ac-43bd-b3bb-e2fe1a3ac91a
+      // API trả về: { data: [...dishes], message, success }
+      // apiClient.get trả về ApiResponse<T> = { data: T, ... }
+      // Nên response.data = { data: [...dishes], message, success }
+      const response = await apiClient.get<{ data: BranchDishApiResponse[], message?: string, success: boolean }>(`/eatnow/branch-dishes/${branchId}`);
+      
+      // response.data.data là mảng dishes thực tế
+      const dishes = response.data;
+      
+      // Map response từ backend sang format frontend
+      return dishes.map((dish: BranchDishApiResponse) => ({
+        id: dish.id,
+        name: dish.name,
+        description: dish.description || '',
+        price: dish.price,
+        category: dish.category || '',
+        image: dish.imageUrl || '',
+        available: dish.isAvailable,
+        bestSeller: dish.isBestSeller,
+        isNew: dish.isNew
+      }));
     } catch (error) {
       const apiError = error as ApiError;
       console.error('Error fetching menu items by branch:', apiError);
@@ -185,22 +274,33 @@ class MenuService {
   // ============ ADMIN OPERATIONS ============
 
   /**
-   * Tạo món ăn mới
-   * @param dish Thông tin món ăn
+   * Tạo món ăn mới (Super Admin)
+   * POST /api/eatnow/dish
    */
   async createDish(dish: {
-    category_id: number;
     name: string;
     description: string;
-    image_url: string;
+    category: string;
+    imageUrl: string;
     price: number;
-    is_active?: boolean;
-    best_seller?: boolean;
-    is_new?: boolean;
+    isBestSeller: boolean;
+    isNew: boolean;
+    isActive: boolean;
   }): Promise<MenuItem> {
     try {
-      const response = await apiClient.post<MenuItemApiResponse>('/dishes', dish);
-      return mapMenuItemResponse(response.data);
+      const response = await apiClient.post<BestSellerDishApiResponse>('/eatnow/dish', dish);
+      const data = response.data;
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || '',
+        price: data.price,
+        category: data.category || '',
+        image: data.imageUrl || '',
+        available: data.isActive,
+        bestSeller: data.isBestSeller,
+        isNew: data.isNew
+      };
     } catch (error) {
       const apiError = error as ApiError;
       console.error('Error creating dish:', apiError);
@@ -209,23 +309,34 @@ class MenuService {
   }
 
   /**
-   * Cập nhật món ăn
-   * @param dishId ID món ăn
-   * @param dish Thông tin cập nhật
+   * Cập nhật món ăn (Super Admin)
+   * PUT /api/eatnow/dish
    */
-  async updateDish(dishId: string, dish: Partial<{
-    category_id: number;
+  async updateDish(dish: {
+    id: string;
     name: string;
     description: string;
-    image_url: string;
+    category: string;
+    imageUrl: string;
     price: number;
-    is_active: boolean;
-    best_seller: boolean;
-    is_new: boolean;
-  }>): Promise<MenuItem> {
+    isBestSeller: boolean;
+    isNew: boolean;
+    isActive: boolean;
+  }): Promise<MenuItem> {
     try {
-      const response = await apiClient.put<MenuItemApiResponse>(`/dishes/${dishId}`, dish);
-      return mapMenuItemResponse(response.data);
+      const response = await apiClient.put<BestSellerDishApiResponse>('/eatnow/dish', dish);
+      const data = response.data;
+      return {
+        id: data.id,
+        name: data.name,
+        description: data.description || '',
+        price: data.price,
+        category: data.category || '',
+        image: data.imageUrl || '',
+        available: data.isActive,
+        bestSeller: data.isBestSeller,
+        isNew: data.isNew
+      };
     } catch (error) {
       const apiError = error as ApiError;
       console.error('Error updating dish:', apiError);

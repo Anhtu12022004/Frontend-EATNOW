@@ -4,9 +4,10 @@ import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { MenuItemCard } from '../cards/MenuItemCard';
 import { menuItems as mockMenuItems } from '../../data/mockData';
-import { MenuItem } from '../../types';
+import { MenuItem, Branch } from '../../types';
 import { Badge } from '../ui/badge';
 import { menuService } from '../../services/menu';
+import { branchService } from '../../services/branch';
 
 interface MenuPageProps {
   branchId: string;
@@ -19,23 +20,29 @@ interface MenuPageProps {
 export function MenuPage({ branchId, onBack, onAddToCart, onOpenCart, cartCount }: MenuPageProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [branch, setBranch] = useState<Branch | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const categories = ['all', 'Món chính', 'Khai vị', 'Tráng miệng', 'Đồ uống', 'Món đặc biệt'];
 
-  // Gọi API lấy menu của chi nhánh
+  // Gọi API lấy menu và thông tin chi nhánh
   useEffect(() => {
-    const fetchMenuItems = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true);
         setError(null);
         
-        // Gọi API lấy menu của chi nhánh
-        const items = await menuService.getMenuItemsByBranch(branchId);
+        // Gọi API lấy menu của chi nhánh và thông tin chi nhánh song song
+        const [items, branchInfo] = await Promise.all([
+          menuService.getMenuItemsByBranch(branchId),
+          branchService.getBranchById(branchId)
+        ]);
+        
         setMenuItems(items);
+        setBranch(branchInfo);
       } catch (err) {
-        console.error('Error fetching menu items:', err);
+        console.error('Error fetching data:', err);
         setError('Không thể tải menu');
         
         // Fallback về mock data
@@ -45,7 +52,7 @@ export function MenuPage({ branchId, onBack, onAddToCart, onOpenCart, cartCount 
       }
     };
 
-    fetchMenuItems();
+    fetchData();
   }, [branchId]);
 
   const filteredItems = selectedCategory === 'all' 
@@ -81,9 +88,9 @@ export function MenuPage({ branchId, onBack, onAddToCart, onOpenCart, cartCount 
           </div>
 
           <div>
-            <h1 style={{ fontSize: '28px' }}>Menu - EATNOW Nguyễn Huệ</h1>
+            <h1 style={{ fontSize: '28px' }}>Menu - {branch?.name || 'Đang tải...'}</h1>
             <p className="text-sm text-muted-foreground">
-              123 Nguyễn Huệ, Quận 1 • Mở cửa: 7:00 - 22:00
+              {branch?.address || ''} {branch?.hours ? `• Mở cửa: ${branch.hours}` : ''}
             </p>
           </div>
         </div>

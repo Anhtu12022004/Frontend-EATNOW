@@ -25,6 +25,7 @@ interface LoginApiResponse {
     createdAt: string;
     role: string; // 'Customer', 'Staff', 'Admin', 'SuperAdmin'
   };
+  
   message: string;
   success: boolean;
 }
