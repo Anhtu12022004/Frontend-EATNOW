@@ -16,6 +16,7 @@ interface BranchQueryParams {
   search?: string;
   sortBy?: 'rating' | 'distance' | 'name';
   sortOrder?: 'asc' | 'desc';
+  active?: boolean; // Nếu true, chỉ lấy chi nhánh có status = "ACTIVE"
 }
 
 /**
@@ -79,6 +80,11 @@ class BranchService {
       // Map response từ backend sang format frontend
       let branches = response.data.map(mapBranchResponse);
       
+      // Nếu active = true, chỉ lấy chi nhánh có status = "ACTIVE"
+      if (params?.active) {
+        branches = branches.filter(branch => branch.status === 'ACTIVE');
+      }
+      
       // Nếu có limit parameter, chỉ lấy số lượng cần thiết
       if (params?.limit) {
         branches = branches.slice(0, params.limit);
@@ -119,7 +125,8 @@ class BranchService {
    */
   async getBranchById(branchId: string): Promise<Branch> {
     try {
-      const response = await apiClient.get<BranchApiResponse>(`/branches/${branchId}`);
+      // API: http://localhost:5214/api/eatnow/branch/{id_branch}
+      const response = await apiClient.get<BranchApiResponse>(`/eatnow/branch/${branchId}`);
       return mapBranchResponse(response.data);
     } catch (error) {
       const apiError = error as ApiError;
@@ -161,6 +168,54 @@ class BranchService {
       const apiError = error as ApiError;
       console.error('Error searching branches:', apiError);
       throw new Error(apiError.message || 'Không thể tìm kiếm chi nhánh');
+    }
+  }
+
+  /**
+   * Thêm chi nhánh mới
+   * @param data Thông tin chi nhánh mới
+   * @returns Chi nhánh vừa tạo
+   */
+  async createBranch(data: {
+    name: string;
+    address: string;
+    phone: string;
+    imageUrl: string;
+    openTime: string;
+    closeTime: string;
+  }): Promise<Branch> {
+    try {
+      const response = await apiClient.post<BranchApiResponse>('/eatnow/branch', data);
+      return mapBranchResponse(response.data);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error creating branch:', apiError);
+      throw new Error(apiError.message || 'Không thể tạo chi nhánh mới');
+    }
+  }
+
+  /**
+   * Cập nhật chi nhánh
+   * @param data Thông tin chi nhánh cần cập nhật
+   * @returns Chi nhánh đã cập nhật
+   */
+  async updateBranch(data: {
+    id: string;
+    name: string;
+    address: string;
+    phone: string;
+    imageUrl: string;
+    status: string;
+    openTime: string;
+    closeTime: string;
+  }): Promise<Branch> {
+    try {
+      const response = await apiClient.put<BranchApiResponse>('/eatnow/branch', data);
+      return mapBranchResponse(response.data);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error updating branch:', apiError);
+      throw new Error(apiError.message || 'Không thể cập nhật chi nhánh');
     }
   }
 }
