@@ -1,26 +1,37 @@
-import { createBrowserRouter, RouterProvider, Outlet, Navigate } from 'react-router-dom';
-import { Header } from './components/layout/Header';
-import { Footer } from './components/layout/Footer';
-import { LandingPage } from './components/pages/LandingPage';
-import { BranchListPage } from './components/pages/BranchListPage';
-import { MenuPage } from './components/pages/MenuPage';
-import { CheckoutPage } from './components/pages/CheckoutPage';
-import { OrderConfirmationPage } from './components/pages/OrderConfirmationPage';
-import { AuthPage } from './components/pages/AuthPage';
-import { ProfilePage } from './components/pages/ProfilePage';
-import { TableReservationPage } from './components/pages/TableReservationPage';
-import { ForgotPasswordPage } from './components/pages/ForgotPasswordPage';
-import { StaffDashboard } from './components/pages/StaffDashboard';
-import { AdminDashboard } from './components/pages/AdminDashboard';
-import { SuperAdminDashboard } from './components/pages/SuperAdminDashboard';
-import { MenuManagement } from './components/pages/MenuManagement';
-import { StaffManagement } from './components/pages/StaffManagement';
-import { useAuth } from './contexts/AuthContext';
-import { useCart } from './hooks/useCart';
-import { CartSheet } from './components/cart/CartSheet';
-import { useState } from 'react';
-import { branches, mockTables, mockOrders, mockRatings, mockReservations } from './data/mockData';
-import { toast } from 'sonner';
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Outlet,
+  Navigate,
+} from "react-router-dom";
+import { Header } from "./components/layout/Header";
+import { Footer } from "./components/layout/Footer";
+import { LandingPage } from "./components/pages/LandingPage";
+import { BranchListPage } from "./components/pages/BranchListPage";
+import { MenuPage } from "./components/pages/MenuPage";
+import { CheckoutPage } from "./components/pages/CheckoutPage";
+import { OrderConfirmationPage } from "./components/pages/OrderConfirmationPage";
+import { AuthPage } from "./components/pages/AuthPage";
+import { ProfilePage } from "./components/pages/ProfilePage";
+import { TableReservationPage } from "./components/pages/TableReservationPage";
+import { ForgotPasswordPage } from "./components/pages/ForgotPasswordPage";
+import { StaffDashboard } from "./components/pages/StaffDashboard";
+import { AdminDashboard } from "./components/pages/AdminDashboard";
+import { SuperAdminDashboard } from "./components/pages/SuperAdminDashboard";
+import { MenuManagement } from "./components/pages/MenuManagement";
+import { StaffManagement } from "./components/pages/StaffManagement";
+import { useAuth } from "./contexts/AuthContext";
+import { useCart } from "./hooks/useCart";
+import { CartSheet } from "./components/cart/CartSheet";
+import { useState } from "react";
+import {
+  branches,
+  mockTables,
+  mockOrders,
+  mockRatings,
+  mockReservations,
+} from "./data/mockData";
+import { toast } from "sonner";
 
 // Layout component for customer pages
 function CustomerLayout() {
@@ -30,11 +41,11 @@ function CustomerLayout() {
 
   const handleCheckout = () => {
     if (cart.items.length === 0) {
-      toast.error('Giỏ hàng trống');
+      toast.error("Giỏ hàng trống");
       return;
     }
     setCartOpen(false);
-    window.location.href = '/checkout';
+    window.location.href = "/checkout";
   };
 
   return (
@@ -44,11 +55,11 @@ function CustomerLayout() {
         onCartClick={() => setCartOpen(true)}
         isLoggedIn={isLoggedIn}
         customer={user ?? undefined}
-        onLogin={() => window.location.href = '/auth'}
+        onLogin={() => (window.location.href = "/auth")}
         onLogout={logout}
-        onProfile={() => window.location.href = '/profile'}
-        onReservation={() => window.location.href = '/reservation'}
-        onLogoClick={() => window.location.href = '/'}
+        onProfile={() => (window.location.href = "/profile")}
+        onReservation={() => (window.location.href = "/reservation")}
+        onLogoClick={() => (window.location.href = "/")}
       />
       <main className="flex-1">
         <Outlet />
@@ -76,7 +87,13 @@ function DashboardLayout() {
 }
 
 // Protected route wrapper
-function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
+function ProtectedRoute({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode;
+  allowedRoles?: string[];
+}) {
   const { isLoggedIn, user } = useAuth();
 
   if (!isLoggedIn) {
@@ -93,15 +110,15 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 // Page wrapper components with necessary props
 function LandingPageWrapper() {
   const cart = useCart();
-  
+
   return (
     <LandingPage
-      onViewMenu={(branchId) => window.location.href = `/menu/${branchId}`}
+      onViewMenu={(branchId) => (window.location.href = `/menu/${branchId}`)}
       onAddToCart={(item) => {
         cart.addItem(item);
-        toast.success('Đã thêm vào giỏ hàng', { description: item.name });
+        toast.success("Đã thêm vào giỏ hàng", { description: item.name });
       }}
-      onViewBranches={() => window.location.href = '/branches'}
+      onViewBranches={() => (window.location.href = "/branches")}
     />
   );
 }
@@ -109,14 +126,14 @@ function LandingPageWrapper() {
 function BranchListPageWrapper() {
   return (
     <BranchListPage
-      onViewMenu={(branchId) => window.location.href = `/menu/${branchId}`}
+      onViewMenu={(branchId) => (window.location.href = `/menu/${branchId}`)}
     />
   );
 }
 
 function MenuPageWrapper() {
   const cart = useCart();
-  const branchId = window.location.pathname.split('/')[2] || '1';
+  const branchId = window.location.pathname.split("/")[2] || "1";
 
   return (
     <MenuPage
@@ -124,7 +141,7 @@ function MenuPageWrapper() {
       onBack={() => window.history.back()}
       onAddToCart={(item) => {
         cart.addItem(item);
-        toast.success('Đã thêm vào giỏ hàng', { description: item.name });
+        toast.success("Đã thêm vào giỏ hàng", { description: item.name });
       }}
       onOpenCart={() => {}}
       cartCount={cart.itemCount}
@@ -140,9 +157,12 @@ function CheckoutPageWrapper() {
       items={cart.items}
       onBack={() => window.history.back()}
       onConfirm={(data) => {
-        const orderId = 'ORD' + Math.random().toString(36).substring(2, 9).toUpperCase();
+        const orderId =
+          "ORD" + Math.random().toString(36).substring(2, 9).toUpperCase();
         cart.clearCart();
-        toast.success('Đơn hàng đã được xác nhận!', { description: `Mã đơn hàng: ${orderId}` });
+        toast.success("Đơn hàng đã được xác nhận!", {
+          description: `Mã đơn hàng: ${orderId}`,
+        });
         window.location.href = `/order-confirmation/${orderId}`;
       }}
     />
@@ -150,13 +170,13 @@ function CheckoutPageWrapper() {
 }
 
 function OrderConfirmationPageWrapper() {
-  const orderId = window.location.pathname.split('/')[2] || '';
+  const orderId = window.location.pathname.split("/")[2] || "";
 
   return (
     <OrderConfirmationPage
       orderId={orderId}
-      onViewOrders={() => window.location.href = '/profile'}
-      onBackToHome={() => window.location.href = '/'}
+      onViewOrders={() => (window.location.href = "/profile")}
+      onBackToHome={() => (window.location.href = "/")}
     />
   );
 }
@@ -168,30 +188,30 @@ function AuthPageWrapper() {
     <AuthPage
       onLogin={(email, password) => {
         login(email, password);
-        window.location.href = '/';
+        window.location.href = "/";
       }}
       onRegister={(name, email, phone, password) => {
         // Handle register
-        window.location.href = '/';
+        window.location.href = "/";
       }}
-      onBack={() => window.location.href = '/'}
-      onForgotPassword={() => window.location.href = '/forgot-password'}
+      onBack={() => (window.location.href = "/")}
+      onForgotPassword={() => (window.location.href = "/forgot-password")}
     />
   );
 }
 
 function ForgotPasswordPageWrapper() {
   const registeredEmails = [
-    'nguyenvana@gmail.com',
-    'tranthib@gmail.com',
-    'staff@eatnow.vn',
-    'admin@eatnow.vn',
+    "nguyenvana@gmail.com",
+    "tranthib@gmail.com",
+    "staff@eatnow.vn",
+    "admin@eatnow.vn",
   ];
 
   return (
     <ForgotPasswordPage
-      onBack={() => window.location.href = '/auth'}
-      onSuccess={() => window.location.href = '/auth'}
+      onBack={() => (window.location.href = "/auth")}
+      onSuccess={() => (window.location.href = "/auth")}
       registeredEmails={registeredEmails}
     />
   );
@@ -207,15 +227,15 @@ function ProfilePageWrapper() {
   return (
     <ProfilePage
       customer={user}
-      onBack={() => window.location.href = '/'}
+      onBack={() => (window.location.href = "/")}
       onUpdate={updateProfile}
       onLogout={() => {
         logout();
-        window.location.href = '/';
+        window.location.href = "/";
       }}
-      orders={mockOrders.filter(o => o.customerId === user.id)}
+      orders={mockOrders.filter((o) => o.customerId === user.id)}
       onRatingSubmit={(rating) => {
-        toast.success('Cảm ơn bạn đã đánh giá!');
+        toast.success("Cảm ơn bạn đã đánh giá!");
       }}
     />
   );
@@ -225,7 +245,7 @@ function TableReservationPageWrapper() {
   const { user } = useAuth();
 
   if (!user) {
-    toast.error('Vui lòng đăng nhập để đặt bàn');
+    toast.error("Vui lòng đăng nhập để đặt bàn");
     return <Navigate to="/auth" replace />;
   }
 
@@ -236,8 +256,8 @@ function TableReservationPageWrapper() {
       customer={user}
       onBack={() => window.history.back()}
       onReservationCreate={(reservation) => {
-        toast.success('Đặt bàn thành công!');
-        window.location.href = '/profile';
+        toast.success("Đặt bàn thành công!");
+        window.location.href = "/profile";
       }}
     />
   );
@@ -249,23 +269,31 @@ function StaffDashboardWrapper() {
 }
 
 function AdminDashboardWrapper() {
-  const [adminPage, setAdminPage] = useState<'dashboard' | 'menu' | 'staff'>('dashboard');
+  const [adminPage, setAdminPage] = useState<"dashboard" | "menu" | "staff">(
+    "dashboard"
+  );
+  const { user } = useAuth();
 
-  if (adminPage === 'menu') {
-    return <MenuManagement onBack={() => setAdminPage('dashboard')} />;
+  if (adminPage === "menu") {
+    return (
+      <MenuManagement
+        onBack={() => setAdminPage("dashboard")}
+        branchId={user?.branchId || undefined}
+      />
+    );
   }
-  if (adminPage === 'staff') {
-    return <StaffManagement onBack={() => setAdminPage('dashboard')} />;
+  if (adminPage === "staff") {
+    return <StaffManagement onBack={() => setAdminPage("dashboard")} />;
   }
 
   return (
     <AdminDashboard
-      onNavigateToMenu={() => setAdminPage('menu')}
-      onNavigateToStaff={() => setAdminPage('staff')}
+      onNavigateToMenu={() => setAdminPage("menu")}
+      onNavigateToStaff={() => setAdminPage("staff")}
       ratings={mockRatings}
-      onApproveRating={(id) => toast.success('Đã duyệt đánh giá')}
-      onHideRating={(id) => toast.info('Đã ẩn đánh giá')}
-      onDeleteRating={(id) => toast.success('Đã xóa đánh giá')}
+      onApproveRating={(id) => toast.success("Đã duyệt đánh giá")}
+      onHideRating={(id) => toast.info("Đã ẩn đánh giá")}
+      onDeleteRating={(id) => toast.success("Đã xóa đánh giá")}
     />
   );
 }
@@ -275,9 +303,9 @@ function SuperAdminDashboardWrapper() {
     <SuperAdminDashboard
       orders={mockOrders}
       ratings={mockRatings}
-      onApproveRating={(id) => toast.success('Đã duyệt đánh giá')}
-      onHideRating={(id) => toast.info('Đã ẩn đánh giá')}
-      onDeleteRating={(id) => toast.success('Đã xóa đánh giá')}
+      onApproveRating={(id) => toast.success("Đã duyệt đánh giá")}
+      onHideRating={(id) => toast.info("Đã ẩn đánh giá")}
+      onDeleteRating={(id) => toast.success("Đã xóa đánh giá")}
     />
   );
 }
@@ -285,63 +313,60 @@ function SuperAdminDashboardWrapper() {
 // Router configuration
 export const router = createBrowserRouter([
   {
-    path: '/',
+    path: "/",
     element: <CustomerLayout />,
     children: [
       { index: true, element: <LandingPageWrapper /> },
-      { path: 'branches', element: <BranchListPageWrapper /> },
-      { path: 'menu/:branchId?', element: <MenuPageWrapper /> },
-      { path: 'checkout', element: <CheckoutPageWrapper /> },
-      { path: 'order-confirmation/:orderId', element: <OrderConfirmationPageWrapper /> },
-      { 
-        path: 'profile', 
+      { path: "branches", element: <BranchListPageWrapper /> },
+      { path: "menu/:branchId?", element: <MenuPageWrapper /> },
+      { path: "checkout", element: <CheckoutPageWrapper /> },
+      {
+        path: "order-confirmation/:orderId",
+        element: <OrderConfirmationPageWrapper />,
+      },
+      {
+        path: "profile",
         element: (
           <ProtectedRoute>
             <ProfilePageWrapper />
           </ProtectedRoute>
-        )
+        ),
       },
-      { 
-        path: 'reservation', 
+      {
+        path: "reservation",
         element: (
           <ProtectedRoute>
             <TableReservationPageWrapper />
           </ProtectedRoute>
-        )
+        ),
       },
     ],
   },
   {
-    path: '/auth',
+    path: "/auth",
     element: <AuthPageWrapper />,
   },
   {
-    path: '/forgot-password',
+    path: "/forgot-password",
     element: <ForgotPasswordPageWrapper />,
   },
   {
-    path: '/staff',
+    path: "/staff",
     element: <DashboardLayout />,
-    children: [
-      { index: true, element: <StaffDashboardWrapper /> },
-    ],
+    children: [{ index: true, element: <StaffDashboardWrapper /> }],
   },
   {
-    path: '/admin',
+    path: "/admin",
     element: <DashboardLayout />,
-    children: [
-      { index: true, element: <AdminDashboardWrapper /> },
-    ],
+    children: [{ index: true, element: <AdminDashboardWrapper /> }],
   },
   {
-    path: '/superadmin',
+    path: "/superadmin",
     element: <DashboardLayout />,
-    children: [
-      { index: true, element: <SuperAdminDashboardWrapper /> },
-    ],
+    children: [{ index: true, element: <SuperAdminDashboardWrapper /> }],
   },
   {
-    path: '*',
+    path: "*",
     element: <Navigate to="/" replace />,
   },
 ]);

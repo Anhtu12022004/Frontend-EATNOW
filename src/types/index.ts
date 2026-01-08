@@ -22,7 +22,7 @@ export interface User {
   address?: string;
   role_id?: number;
   role?: string;
-  status?: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
+  status?: "ACTIVE" | "INACTIVE" | "BLOCKED";
   created_at?: string | Date;
   // Frontend computed
   name?: string; // alias for full_name
@@ -41,7 +41,7 @@ export interface UserApiResponse {
   created_at: string;
 }
 
-export type UserRole = 'guest' | 'customer' | 'staff' | 'admin' | 'superadmin';
+export type UserRole = "guest" | "customer" | "staff" | "admin" | "superadmin";
 
 // Customer là alias của User cho frontend
 export interface Customer {
@@ -53,6 +53,7 @@ export interface Customer {
   address?: string;
   joinedDate: Date;
   status?: string;
+  branchId?: string | null; // ID chi nhánh cho admin/staff
 }
 
 // ============ BRANCHES ============
@@ -90,7 +91,7 @@ export interface Table {
   branch_id: number;
   table_number: number;
   capacity: number;
-  status: 'AVAILABLE' | 'RESERVED' | 'OCCUPIED';
+  status: "AVAILABLE" | "RESERVED" | "OCCUPIED";
   // Frontend computed
   number?: string;
   seats?: number;
@@ -162,6 +163,7 @@ export interface MenuItem {
   bestSeller?: boolean;
   isNew?: boolean;
   categoryId?: number;
+  dishId?: string; // ID của dish (dùng khi lấy từ branch-dishes)
 }
 
 // ============ BRANCH_DISHES ============
@@ -191,7 +193,7 @@ export interface Reservation {
   table_id?: number | null;
   reservation_time: string | Date;
   number_of_people: number;
-  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED';
+  status: "PENDING" | "CONFIRMED" | "CANCELLED";
   // Frontend computed
   reservationCode?: string;
   customerId?: string;
@@ -225,7 +227,7 @@ export interface Order {
   table_id?: number | null;
   total_price: number;
   order_time: string | Date;
-  status: 'NEW' | 'PREPARING' | 'PAID' | 'CANCELLED';
+  status: "NEW" | "PREPARING" | "PAID" | "CANCELLED";
   // Frontend computed
   customerId?: string;
   customerName?: string;
@@ -282,7 +284,7 @@ export interface Payment {
   order_id: number;
   amount: number;
   payment_method: string;
-  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+  status: "PENDING" | "SUCCESS" | "FAILED";
   paid_at?: string | Date;
 }
 
@@ -300,7 +302,7 @@ export interface StaffAssignment {
   id: number;
   staff_id: number;
   branch_id: number;
-  position: 'ADMIN' | 'CHEF' | 'WAITER';
+  position: "ADMIN" | "CHEF" | "WAITER";
   start_date: string | Date;
   end_date?: string | Date | null;
   // Joined fields
@@ -365,13 +367,13 @@ export interface Rating {
   customerName: string;
   branchId: string;
   branchName: string;
-  type: 'dish' | 'branch';
+  type: "dish" | "branch";
   dishId?: string;
   dishName?: string;
   stars: 1 | 2 | 3 | 4 | 5;
   comment: string;
   images?: string[];
   createdAt: Date;
-  status: 'pending' | 'approved' | 'hidden';
+  status: "pending" | "approved" | "hidden";
   isVisible?: boolean;
 }

@@ -1,152 +1,225 @@
-import { useState } from 'react';
-import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, ArrowLeft, Upload } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Card, CardContent } from '../ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
-import { Badge } from '../ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
-import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { menuItems as initialMenuItems } from '../../data/mockData';
-import { MenuItem } from '../../types';
-import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { Switch } from '../ui/switch';
-import { toast } from 'sonner';
+import { useState, useEffect } from "react";
+import { Pencil, Search, ArrowLeft, Loader2 } from "lucide-react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Card, CardContent } from "../ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
+import { Badge } from "../ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Label } from "../ui/label";
+import { MenuItem } from "../../types";
+import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { Switch } from "../ui/switch";
+import { toast } from "sonner";
+import { menuService } from "../../services";
 
 interface MenuManagementProps {
   onBack?: () => void;
+  branchId?: string; // Optional: từ props
 }
 
-export function MenuManagement({ onBack }: MenuManagementProps) {
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(initialMenuItems);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+// Extended MenuItem với thông tin branch
+interface BranchMenuItem extends MenuItem {
+  dishId?: string; // ID của dish (từ menu super admin)
+  branchDishId?: string; // ID của branch_dish record
+  originalPrice?: number; // Giá gốc từ menu super admin
+  branchPrice?: number; // Giá chi nhánh
+  isInBranch: boolean; // Món có trong menu chi nhánh hay không
+}
+
+export function MenuManagement({
+  onBack,
+  branchId: propBranchId,
+}: MenuManagementProps) {
+  // Nếu branchId được truyền từ props, sử dụng nó
+  // Nếu không, cố gắng lấy từ localStorage hoặc context
+  const getInitialBranchId = () => {
+    if (propBranchId) return propBranchId;
+
+    // Thử lấy từ localStorage
+    try {
+      const stored = localStorage.getItem("eatnow_auth");
+      if (stored) {
+        const data = JSON.parse(stored);
+        return data.user?.branchId;
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+
+    return undefined;
+  };
+
+  const branchId = getInitialBranchId();
+
+  const [menuItems, setMenuItems] = useState<BranchMenuItem[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [editingItem, setEditingItem] = useState<BranchMenuItem | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  
-  // Form state
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Form state for editing
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    category: 'Món chính' as MenuItem['category'],
-    image: '',
-    available: true,
-    bestSeller: false,
-    isNew: false
+    branchPrice: "",
+    isActive: false,
   });
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('vi-VN').format(price) + ' ₫';
+    return new Intl.NumberFormat("vi-VN").format(price) + " ₫";
   };
 
-  const filteredItems = menuItems.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchTerm.toLowerCase())
+  // Load menu data
+  useEffect(() => {
+    loadMenuData();
+  }, [branchId]);
+
+  const loadMenuData = async () => {
+    if (!branchId) {
+      toast.error("Không tìm thấy thông tin chi nhánh");
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // 1. Lấy tất cả món active từ menu super admin
+      const activeDishes = await menuService.getActiveDishes();
+
+      // 2. Lấy menu của chi nhánh
+      const branchDishes = await menuService.getMenuItemsByBranch(branchId);
+
+      // 3. Tạo map từ dishId -> branch dish info
+      const branchDishMap = new Map<string, MenuItem>();
+      branchDishes.forEach((dish) => {
+        if (dish.dishId) {
+          branchDishMap.set(dish.dishId, dish);
+        }
+      });
+
+      // 4. Combine data: tất cả món từ super admin + thông tin từ branch
+      const combinedItems: BranchMenuItem[] = activeDishes.map((dish) => {
+        const branchDish = branchDishMap.get(dish.id);
+        const isInBranch = !!branchDish;
+
+        return {
+          ...dish,
+          dishId: dish.id, // ID món từ menu super admin
+          branchDishId: branchDish?.id, // ID của branch_dish record (nếu có)
+          originalPrice: dish.price, // Giá gốc
+          branchPrice: branchDish?.price, // Giá chi nhánh (nếu có)
+          price: branchDish?.price ?? dish.price, // Hiển thị giá chi nhánh nếu có
+          isInBranch,
+          available: branchDish?.available ?? false, // Chỉ available nếu có trong branch
+        };
+      });
+
+      // Sort: món trong chi nhánh lên trên, sau đó theo tên
+      combinedItems.sort((a, b) => {
+        if (a.isInBranch !== b.isInBranch) {
+          return a.isInBranch ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name, "vi");
+      });
+
+      setMenuItems(combinedItems);
+    } catch (error) {
+      console.error("Error loading menu data:", error);
+      toast.error("Không thể tải dữ liệu menu");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredItems = menuItems.filter(
+    (item) =>
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleToggleAvailability = (itemId: string) => {
-    setMenuItems(menuItems.map(item =>
-      item.id === itemId ? { ...item, available: !item.available } : item
-    ));
-    toast.success('Đã cập nhật trạng thái món');
-  };
-
-  const handleDelete = (itemId: string) => {
-    const item = menuItems.find(i => i.id === itemId);
-    if (confirm(`Bạn có chắc muốn xóa "${item?.name}"?`)) {
-      setMenuItems(menuItems.filter(item => item.id !== itemId));
-      toast.success('Đã xóa món thành công');
-    }
-  };
-
-  const handleEdit = (item: MenuItem) => {
+  const handleEdit = (item: BranchMenuItem) => {
     setEditingItem(item);
     setFormData({
-      name: item.name,
-      description: item.description,
-      price: item.price.toString(),
-      category: item.category,
-      image: item.image,
-      available: item.available,
-      bestSeller: item.bestSeller || false,
-      isNew: item.isNew || false
+      branchPrice:
+        item.branchPrice?.toString() || item.originalPrice?.toString() || "",
+      isActive: item.isInBranch,
     });
     setIsDialogOpen(true);
   };
 
-  const handleAddNew = () => {
-    setEditingItem(null);
-    setFormData({
-      name: '',
-      description: '',
-      price: '',
-      category: 'Món chính',
-      image: '',
-      available: true,
-      bestSeller: false,
-      isNew: false
-    });
-    setIsDialogOpen(true);
+  const handleSave = async () => {
+    if (!editingItem || !branchId) return;
+
+    const price = parseFloat(formData.branchPrice);
+    if (isNaN(price) || price <= 0) {
+      toast.error("Vui lòng nhập giá hợp lệ");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      if (editingItem.isInBranch && editingItem.branchDishId) {
+        // Cập nhật món đã có trong chi nhánh
+        await menuService.updateBranchDish(editingItem.branchDishId, {
+          price: price,
+          isAvailable: formData.isActive,
+        });
+        toast.success("Đã cập nhật món thành công");
+      } else if (formData.isActive && editingItem.dishId) {
+        // Thêm món mới vào chi nhánh
+        await menuService.addDishToBranch(branchId, editingItem.dishId, price);
+        toast.success("Đã thêm món vào menu chi nhánh");
+      } else {
+        // Món không active và chưa có trong chi nhánh -> không làm gì
+        toast.info("Không có thay đổi nào được lưu");
+      }
+
+      // Reload data
+      await loadMenuData();
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error("Error saving:", error);
+      toast.error("Không thể lưu thay đổi");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSave = () => {
-    // Validate
-    if (!formData.name.trim()) {
-      toast.error('Vui lòng nhập tên món');
-      return;
-    }
-    if (!formData.description.trim()) {
-      toast.error('Vui lòng nhập mô tả');
-      return;
-    }
-    if (!formData.price || parseFloat(formData.price) <= 0) {
-      toast.error('Vui lòng nhập giá hợp lệ');
-      return;
-    }
-    if (!formData.image.trim()) {
-      toast.error('Vui lòng nhập URL hình ảnh');
-      return;
-    }
-
-    const newItem: MenuItem = {
-      id: editingItem?.id || 'm' + Date.now(),
-      name: formData.name,
-      description: formData.description,
-      price: parseFloat(formData.price),
-      category: formData.category,
-      image: formData.image,
-      available: formData.available,
-      bestSeller: formData.bestSeller,
-      isNew: formData.isNew
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      "Món chính": "bg-amber-100 text-amber-800",
+      "Khai vị": "bg-green-100 text-green-800",
+      "Tráng miệng": "bg-pink-100 text-pink-800",
+      "Đồ uống": "bg-blue-100 text-blue-800",
+      "Món đặc biệt": "bg-purple-100 text-purple-800",
     };
-
-    if (editingItem?.id) {
-      // Update existing
-      setMenuItems(menuItems.map(item => 
-        item.id === editingItem.id ? newItem : item
-      ));
-      toast.success('Đã cập nhật món thành công');
-    } else {
-      // Add new
-      setMenuItems([...menuItems, newItem]);
-      toast.success('Đã thêm món mới thành công');
-    }
-
-    setIsDialogOpen(false);
+    return colors[category] || "bg-gray-100 text-gray-800";
   };
 
-  const getCategoryColor = (category: MenuItem['category']) => {
-    const colors = {
-      'Món chính': 'bg-amber-100 text-amber-800',
-      'Khai vị': 'bg-green-100 text-green-800',
-      'Tráng miệng': 'bg-pink-100 text-pink-800',
-      'Đồ uống': 'bg-blue-100 text-blue-800',
-      'Món đặc biệt': 'bg-purple-100 text-purple-800',
-    };
-    return colors[category];
-  };
+  if (!branchId) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-4">
+            Không tìm thấy thông tin chi nhánh
+          </p>
+          {onBack && (
+            <Button variant="outline" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Quay lại
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -157,162 +230,19 @@ export function MenuManagement({ onBack }: MenuManagementProps) {
             Quay lại Dashboard
           </Button>
         )}
-        
+
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 style={{ fontSize: '28px' }}>Quản lý thực đơn</h1>
-            <p className="text-muted-foreground">Thêm, sửa, xóa món trong menu ({menuItems.length} món)</p>
+            <h1 style={{ fontSize: "28px" }}>Quản lý thực đơn chi nhánh</h1>
+            <p className="text-muted-foreground">
+              Quản lý menu của chi nhánh (
+              {menuItems.filter((i) => i.isInBranch).length} món đang bán /{" "}
+              {menuItems.length} món)
+            </p>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-primary hover:bg-primary/90" onClick={handleAddNew}>
-                <Plus className="h-4 w-4 mr-2" />
-                Thêm món mới
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingItem?.id ? 'Chỉnh sửa món' : 'Thêm món mới'}
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Tên món *</Label>
-                  <Input
-                    id="name"
-                    placeholder="Nhập tên món"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Mô tả *</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Mô tả ngắn gọn về món"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="price">Giá (₫) *</Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      placeholder="0"
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="category">Danh mục *</Label>
-                    <Select 
-                      value={formData.category} 
-                      onValueChange={(value) => setFormData({ ...formData, category: value as MenuItem['category'] })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Món chính">Món chính</SelectItem>
-                        <SelectItem value="Khai vị">Khai vị</SelectItem>
-                        <SelectItem value="Tráng miệng">Tráng miệng</SelectItem>
-                        <SelectItem value="Đồ uống">Đồ uống</SelectItem>
-                        <SelectItem value="Món đặc biệt">Món đặc biệt</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="image">URL hình ảnh *</Label>
-                  <Input
-                    id="image"
-                    placeholder="https://..."
-                    value={formData.image}
-                    onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    💡 Có thể sử dụng URL từ Unsplash hoặc nguồn ảnh khác
-                  </p>
-                  {formData.image && (
-                    <div className="mt-2 w-32 h-32 rounded-lg overflow-hidden border">
-                      <ImageWithFallback
-                        src={formData.image}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <Label htmlFor="available">Còn hàng</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Món này có sẵn để đặt
-                      </p>
-                    </div>
-                    <Switch 
-                      id="available" 
-                      checked={formData.available}
-                      onCheckedChange={(checked) => setFormData({ ...formData, available: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <Label htmlFor="bestseller">Best Seller</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Hiển thị badge Best Seller
-                      </p>
-                    </div>
-                    <Switch 
-                      id="bestseller" 
-                      checked={formData.bestSeller}
-                      onCheckedChange={(checked) => setFormData({ ...formData, bestSeller: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <Label htmlFor="new">Món mới</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Hiển thị badge New
-                      </p>
-                    </div>
-                    <Switch 
-                      id="new" 
-                      checked={formData.isNew}
-                      onCheckedChange={(checked) => setFormData({ ...formData, isNew: checked })}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-4">
-                  <Button 
-                    className="flex-1 bg-primary hover:bg-primary/90"
-                    onClick={handleSave}
-                  >
-                    {editingItem ? 'Cập nhật' : 'Thêm món'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setIsDialogOpen(false)}
-                  >
-                    Hủy
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
 
-        {/* Search and Filters */}
+        {/* Search */}
         <Card className="mb-6">
           <CardContent className="p-4">
             <div className="relative">
@@ -330,77 +260,75 @@ export function MenuManagement({ onBack }: MenuManagementProps) {
         {/* Menu Items Table */}
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[80px]">Hình</TableHead>
-                  <TableHead>Tên món</TableHead>
-                  <TableHead>Danh mục</TableHead>
-                  <TableHead className="text-right">Giá</TableHead>
-                  <TableHead className="text-center">Trạng thái</TableHead>
-                  <TableHead className="text-center">Còn hàng</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <div className="w-14 h-14 rounded-lg overflow-hidden">
-                        <ImageWithFallback
-                          src={item.image}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{item.name}</div>
-                        <div className="text-sm text-muted-foreground line-clamp-1">
-                          {item.description}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-2">Đang tải...</span>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[80px]">Hình</TableHead>
+                    <TableHead>Tên món</TableHead>
+                    <TableHead>Danh mục</TableHead>
+                    <TableHead className="text-right">Giá gốc</TableHead>
+                    <TableHead className="text-right">Giá chi nhánh</TableHead>
+                    <TableHead className="text-center">Trạng thái</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredItems.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      className={!item.isInBranch ? "opacity-60" : ""}
+                    >
+                      <TableCell>
+                        <div className="w-14 h-14 rounded-lg overflow-hidden">
+                          <ImageWithFallback
+                            src={item.image}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getCategoryColor(item.category)}>
-                        {item.category}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div style={{ fontWeight: 600 }}>
-                        {formatPrice(item.price)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {item.bestSeller && (
-                          <Badge variant="outline" className="text-xs">
-                            Best
-                          </Badge>
-                        )}
-                        {item.isNew && (
-                          <Badge variant="outline" className="text-xs bg-green-50">
-                            New
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleToggleAvailability(item.id)}
-                      >
-                        {item.available ? (
-                          <ToggleRight className="h-5 w-5 text-green-600" />
-                        ) : (
-                          <ToggleLeft className="h-5 w-5 text-muted-foreground" />
-                        )}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{item.name}</div>
+                          <div className="text-sm text-muted-foreground line-clamp-1">
+                            {item.description}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getCategoryColor(item.category)}>
+                          {item.category}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="text-muted-foreground">
+                          {formatPrice(item.originalPrice || 0)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div style={{ fontWeight: 600 }}>
+                          {item.isInBranch
+                            ? formatPrice(item.branchPrice || 0)
+                            : "-"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant={item.isInBranch ? "default" : "secondary"}
+                          className={
+                            item.isInBranch ? "bg-green-100 text-green-800" : ""
+                          }
+                        >
+                          {item.isInBranch ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -409,30 +337,120 @@ export function MenuManagement({ onBack }: MenuManagementProps) {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
 
-            {filteredItems.length === 0 && (
+            {!isLoading && filteredItems.length === 0 && (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">
-                  Không tìm thấy món nào
-                </p>
+                <p className="text-muted-foreground">Không tìm thấy món nào</p>
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Chỉnh sửa món - {editingItem?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {/* Preview Image */}
+              {editingItem?.image && (
+                <div className="flex justify-center">
+                  <div className="w-32 h-32 rounded-lg overflow-hidden border">
+                    <ImageWithFallback
+                      src={editingItem.image}
+                      alt={editingItem.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Original Price (Read only) */}
+              <div className="space-y-2">
+                <Label>Giá gốc (từ menu hệ thống)</Label>
+                <div className="p-3 bg-muted rounded-lg text-muted-foreground">
+                  {formatPrice(editingItem?.originalPrice || 0)}
+                </div>
+              </div>
+
+              {/* Branch Price */}
+              <div className="space-y-2">
+                <Label htmlFor="branchPrice">Giá chi nhánh (₫) *</Label>
+                <Input
+                  id="branchPrice"
+                  type="number"
+                  placeholder="Nhập giá cho chi nhánh"
+                  value={formData.branchPrice}
+                  onChange={(e) =>
+                    setFormData({ ...formData, branchPrice: e.target.value })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Giá này sẽ được hiển thị cho khách hàng khi đặt món tại chi
+                  nhánh
+                </p>
+              </div>
+
+              {/* Active/Inactive Toggle */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label htmlFor="isActive">Trạng thái</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {formData.isActive
+                      ? "Món đang bán tại chi nhánh"
+                      : "Món không có trong menu chi nhánh"}
+                  </p>
+                </div>
+                <Switch
+                  id="isActive"
+                  checked={formData.isActive}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, isActive: checked })
+                  }
+                  disabled={editingItem?.isInBranch && !formData.isActive}
+                />
+              </div>
+
+              {!editingItem?.isInBranch && formData.isActive && (
+                <div className="p-3 bg-green-50 text-green-800 rounded-lg text-sm">
+                  ✓ Món này sẽ được thêm vào menu chi nhánh
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-4">
+                <Button
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    "Lưu thay đổi"
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setIsDialogOpen(false)}
+                  disabled={isSaving}
+                >
+                  Hủy
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

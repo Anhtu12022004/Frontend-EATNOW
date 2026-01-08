@@ -1,5 +1,5 @@
-import { apiClient, ApiError } from './api';
-import { Customer, UserRole } from '../types';
+import { apiClient, ApiError } from "./api";
+import { Customer, UserRole } from "../types";
 
 interface LoginRequest {
   email: string;
@@ -24,8 +24,9 @@ interface LoginApiResponse {
     status: string;
     createdAt: string;
     role: string; // 'Customer', 'Staff', 'Admin', 'SuperAdmin'
+    branchId: string | null; // New field: ID của chi nhánh cho admin/staff
   };
-  
+
   message: string;
   success: boolean;
 }
@@ -63,22 +64,22 @@ class AuthService {
    */
   private mapRole(backendRole: string): UserRole {
     const roleMap: Record<string, UserRole> = {
-      'customer': 'customer',
-      'Customer': 'customer',
-      'staff': 'staff',
-      'Staff': 'staff',
-      'admin': 'admin',
-      'Admin': 'admin',
-      'superadmin': 'superadmin',
-      'SuperAdmin': 'superadmin'
+      customer: "customer",
+      Customer: "customer",
+      staff: "staff",
+      Staff: "staff",
+      admin: "admin",
+      Admin: "admin",
+      superadmin: "superadmin",
+      SuperAdmin: "superadmin",
     };
-    return roleMap[backendRole] || 'customer';
+    return roleMap[backendRole] || "customer";
   }
 
   /**
    * Chuyển đổi user từ API response sang Customer object
    */
-  private mapUserResponse(apiUser: LoginApiResponse['data']): Customer {
+  private mapUserResponse(apiUser: LoginApiResponse["data"]): Customer {
     return {
       id: apiUser.id,
       name: apiUser.fullName,
@@ -86,7 +87,8 @@ class AuthService {
       phone: apiUser.phone,
       address: apiUser.address || undefined,
       joinedDate: new Date(apiUser.createdAt),
-      status: apiUser.status
+      status: apiUser.status,
+      branchId: apiUser.branchId || null,
     };
   }
   /**
@@ -96,23 +98,26 @@ class AuthService {
    */
   async login(credentials: LoginRequest): Promise<AuthResponse> {
     try {
-      const response = await apiClient.post<LoginApiResponse['data']>('/auth/login', credentials);
-      console.log('Login response:', response);
+      const response = await apiClient.post<LoginApiResponse["data"]>(
+        "/auth/login",
+        credentials
+      );
+      console.log("Login response:", response);
 
       // Kiểm tra xem backend trả về success hay không
       if (!response.success) {
-        throw new Error(response.message || 'Đăng nhập thất bại');
+        throw new Error(response.message || "Đăng nhập thất bại");
       }
 
       const token = (response as any).token;
       const apiUser = response.data;
 
       if (!token) {
-        throw new Error('Token không được trả về từ server');
+        throw new Error("Token không được trả về từ server");
       }
 
       if (!apiUser) {
-        throw new Error('Dữ liệu người dùng không được trả về từ server');
+        throw new Error("Dữ liệu người dùng không được trả về từ server");
       }
 
       // Map role từ backend response
@@ -125,10 +130,10 @@ class AuthService {
       const authResponse: AuthResponse = {
         user,
         role,
-        token
+        token,
       };
 
-      console.log('Auth response:', authResponse);
+      console.log("Auth response:", authResponse);
 
       // Lưu token vào localStorage và set Authorization header
       apiClient.setToken(token);
@@ -136,29 +141,29 @@ class AuthService {
       return authResponse;
     } catch (error) {
       const apiError = error as any;
-      
+
       // Lấy thông báo lỗi chi tiết từ field errors nếu có
-      let errorMessage = apiError.message || 'Đăng nhập thất bại';
-      
+      let errorMessage = apiError.message || "Đăng nhập thất bại";
+
       if (apiError.errors) {
         const fieldErrors = Object.values(apiError.errors).flat();
         if (fieldErrors.length > 0) {
-          errorMessage = (fieldErrors[0] as string);
+          errorMessage = fieldErrors[0] as string;
         }
       }
-      
+
       // Xử lý trường hợp backend trả về lỗi chung chung
       // if (errorMessage.toLowerCase().includes('network')) {
       //   errorMessage = 'Email hoặc mật khẩu không chính xác. Vui lòng thử lại.';
       // }
-      
-      console.error('Login error:', {
+
+      console.error("Login error:", {
         message: errorMessage,
         originalError: apiError.message,
         statusCode: apiError.statusCode,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      
+
       throw new Error(errorMessage);
     }
   }
@@ -170,25 +175,28 @@ class AuthService {
    */
   async register(data: RegisterRequest): Promise<RegisterResponse> {
     try {
-      const response = await apiClient.post<RegisterApiResponse['data']>('/auth/register', data);
-      console.log('Register response:', response);
-      
+      const response = await apiClient.post<RegisterApiResponse["data"]>(
+        "/auth/register",
+        data
+      );
+      console.log("Register response:", response);
+
       // Kiểm tra xem backend trả về success hay không
       if (!response.success) {
-        throw new Error(response.message || 'Đăng ký thất bại');
+        throw new Error(response.message || "Đăng ký thất bại");
       }
 
       // Khi thành công, response.data là user object
       const userData = response.data;
-      
+
       return {
         success: true,
-        message: response.message || 'Đăng ký thành công',
-        email: userData?.email || data.email
+        message: response.message || "Đăng ký thành công",
+        email: userData?.email || data.email,
       };
     } catch (error) {
       const apiError = error as ApiError;
-      throw new Error(apiError.message || 'Đăng ký thất bại');
+      throw new Error(apiError.message || "Đăng ký thất bại");
     }
   }
 
@@ -198,7 +206,7 @@ class AuthService {
    */
   async verifyToken(): Promise<boolean> {
     try {
-      await apiClient.get<{ valid: boolean }>('/auth/verify');
+      await apiClient.get<{ valid: boolean }>("/auth/verify");
       return true;
     } catch {
       return false;
@@ -211,11 +219,11 @@ class AuthService {
    */
   async getCurrentUser(): Promise<Customer> {
     try {
-      const response = await apiClient.get<Customer>('/auth/me');
+      const response = await apiClient.get<Customer>("/auth/me");
       return response.data;
     } catch (error) {
       const apiError = error as ApiError;
-      throw new Error(apiError.message || 'Không thể lấy thông tin người dùng');
+      throw new Error(apiError.message || "Không thể lấy thông tin người dùng");
     }
   }
 
@@ -225,8 +233,8 @@ class AuthService {
   logout(): void {
     apiClient.setToken(null);
     // Xóa tất cả token-related keys từ localStorage
-    localStorage.removeItem('eatnow_auth');
-    localStorage.removeItem('auth_token');
+    localStorage.removeItem("eatnow_auth");
+    localStorage.removeItem("auth_token");
 
     window.location.reload();
   }
@@ -235,7 +243,7 @@ class AuthService {
    * Lấy token từ localStorage
    */
   getStoredToken(): string | null {
-    return localStorage.getItem('auth_token');
+    return localStorage.getItem("auth_token");
   }
 
   /**
