@@ -9,6 +9,8 @@ export { reservationService } from './reservation';
 export { paymentService } from './payment';
 export { feedbackService } from './feedback';
 export { userService } from './user';
+export { staffService, STAFF_POSITIONS } from './staff';
+export type { BranchStaff, CreateStaffRequest, UpdateStaffRequest } from './staff';
 
 // ============ Auth Service ============
 export interface LoginRequest {

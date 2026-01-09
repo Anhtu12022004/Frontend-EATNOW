@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, Pencil, Trash2, Search, ArrowLeft, UserX, UserCheck, KeyRound, Mail, Phone } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Pencil, Search, ArrowLeft, UserX, UserCheck, KeyRound, Mail, Phone, Loader2, MapPin } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
@@ -8,73 +8,119 @@ import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { mockStaff } from '../../data/mockData';
-import { Staff } from '../../types';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Avatar, AvatarFallback } from '../ui/avatar';
 import { toast } from 'sonner';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../ui/alert-dialog';
+import { Switch } from '../ui/switch';
+import { staffService, BranchStaff, STAFF_POSITIONS } from '../../services/staff';
 
 interface StaffManagementProps {
   onBack?: () => void;
+  branchId?: string;
 }
 
-export function StaffManagement({ onBack }: StaffManagementProps) {
-  const [staffList, setStaffList] = useState<Staff[]>(mockStaff);
+export function StaffManagement({ onBack, branchId: propBranchId }: StaffManagementProps) {
+  // Lấy branchId từ props hoặc localStorage
+  const getInitialBranchId = () => {
+    if (propBranchId) return propBranchId;
+
+    // Thử lấy từ localStorage
+    try {
+      const stored = localStorage.getItem('eatnow_auth');
+      if (stored) {
+        const data = JSON.parse(stored);
+        return data.user?.branchId || data.data?.branchId;
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+
+    return undefined;
+  };
+
+  const branchId = getInitialBranchId();
+
+  const [staffList, setStaffList] = useState<BranchStaff[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [editingStaff, setEditingStaff] = useState<BranchStaff | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
-    name: '',
+    fullName: '',
     email: '',
     phone: '',
-    role: 'waiter' as Staff['role'],
-    avatar: '',
-    status: 'active' as Staff['status']
+    address: '',
+    position: 'PHỤC VỤ',
+    isActive: true
   });
 
+  // Load staff data
+  useEffect(() => {
+    loadStaffData();
+  }, [branchId]);
+
+  const loadStaffData = async () => {
+    if (!branchId) {
+      toast.error('Không tìm thấy thông tin chi nhánh');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const data = await staffService.getStaffByBranch(branchId);
+      setStaffList(data);
+    } catch (error) {
+      console.error('Error loading staff:', error);
+      toast.error('Không thể tải danh sách nhân viên');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filteredStaff = staffList.filter(staff =>
-    staff.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    staff.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     staff.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     staff.phone.includes(searchTerm)
   );
 
-  const handleToggleStatus = (staffId: string) => {
-    setStaffList(staffList.map(staff =>
-      staff.id === staffId 
-        ? { ...staff, status: staff.status === 'active' ? 'inactive' : 'active' } 
-        : staff
-    ));
-    const staff = staffList.find(s => s.id === staffId);
-    toast.success(`Đã ${staff?.status === 'active' ? 'vô hiệu hóa' : 'kích hoạt'} tài khoản`);
-  };
+  const handleToggleStatus = async (staff: BranchStaff) => {
+    if (!branchId) return;
 
-  const handleDelete = (staff: Staff) => {
-    setStaffToDelete(staff);
-    setDeleteDialogOpen(true);
-  };
+    const newStatus = staff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    
+    try {
+      await staffService.updateStaff({
+        userId: staff.id,
+        fullName: staff.fullName,
+        email: staff.email,
+        phone: staff.phone,
+        address: staff.address,
+        position: staff.position,
+        isActive: newStatus === 'ACTIVE',
+        branchId: branchId
+      });
 
-  const confirmDelete = () => {
-    if (staffToDelete) {
-      setStaffList(staffList.filter(staff => staff.id !== staffToDelete.id));
-      toast.success('Đã xóa nhân viên thành công');
-      setDeleteDialogOpen(false);
-      setStaffToDelete(null);
+      // Reload data
+      await loadStaffData();
+      toast.success(`Đã ${newStatus === 'ACTIVE' ? 'kích hoạt' : 'vô hiệu hóa'} tài khoản`);
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      toast.error('Không thể cập nhật trạng thái');
     }
   };
 
-  const handleEdit = (staff: Staff) => {
+  const handleEdit = (staff: BranchStaff) => {
     setEditingStaff(staff);
     setFormData({
-      name: staff.name,
+      fullName: staff.fullName,
       email: staff.email,
       phone: staff.phone,
-      role: staff.role,
-      avatar: staff.avatar || '',
-      status: staff.status
+      address: staff.address,
+      position: staff.position,
+      isActive: staff.status === 'ACTIVE'
     });
     setIsDialogOpen(true);
   };
@@ -82,19 +128,24 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
   const handleAddNew = () => {
     setEditingStaff(null);
     setFormData({
-      name: '',
+      fullName: '',
       email: '',
       phone: '',
-      role: 'waiter',
-      avatar: '',
-      status: 'active'
+      address: '',
+      position: 'PHỤC VỤ',
+      isActive: true
     });
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!branchId) {
+      toast.error('Không tìm thấy thông tin chi nhánh');
+      return;
+    }
+
     // Validate
-    if (!formData.name.trim()) {
+    if (!formData.fullName.trim()) {
       toast.error('Vui lòng nhập tên nhân viên');
       return;
     }
@@ -107,55 +158,58 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
       return;
     }
 
-    const newStaff: Staff = {
-      id: editingStaff?.id || 's' + Date.now(),
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      role: formData.role,
-      avatar: formData.avatar || undefined,
-      status: formData.status,
-      joinedDate: editingStaff?.joinedDate || new Date(),
-      branchId: '1'
-    };
+    setIsSaving(true);
+    try {
+      if (editingStaff) {
+        // Update existing staff
+        await staffService.updateStaff({
+          userId: editingStaff.id,
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          position: formData.position,
+          isActive: formData.isActive,
+          branchId: branchId
+        });
+        toast.success('Đã cập nhật thông tin nhân viên');
+      } else {
+        // Create new staff
+        await staffService.createStaff({
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          position: formData.position,
+          branchId: branchId
+        });
+        toast.success('Đã thêm nhân viên mới thành công');
+      }
 
-    if (editingStaff?.id) {
-      // Update existing
-      setStaffList(staffList.map(staff => 
-        staff.id === editingStaff.id ? newStaff : staff
-      ));
-      toast.success('Đã cập nhật thông tin nhân viên');
-    } else {
-      // Add new
-      setStaffList([...staffList, newStaff]);
-      toast.success('Đã thêm nhân viên mới thành công');
+      // Reload data and close dialog
+      await loadStaffData();
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error('Error saving staff:', error);
+      toast.error(editingStaff ? 'Không thể cập nhật thông tin' : 'Không thể thêm nhân viên');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsDialogOpen(false);
   };
 
-  const handleResetPassword = (staff: Staff) => {
-    toast.success(`Đã gửi email đặt lại mật khẩu cho ${staff.name}`);
+  const handleResetPassword = (staff: BranchStaff) => {
+    toast.success(`Đã gửi email đặt lại mật khẩu cho ${staff.fullName}`);
   };
 
-  const getRoleBadge = (role: Staff['role']) => {
-    const styles = {
-      chef: 'bg-orange-100 text-orange-800',
-      waiter: 'bg-blue-100 text-blue-800',
-      cashier: 'bg-green-100 text-green-800',
-      barista: 'bg-amber-100 text-amber-800',
-      manager: 'bg-purple-100 text-purple-800',
+  const getPositionBadge = (position: string) => {
+    const styles: Record<string, string> = {
+      'ĐẦU BẾP': 'bg-orange-100 text-orange-800',
+      'PHỤC VỤ': 'bg-blue-100 text-blue-800',
+      'THU NGÂN': 'bg-green-100 text-green-800',
+      'PHA CHẾ': 'bg-amber-100 text-amber-800',
     };
 
-    const labels = {
-      chef: 'Đầu bếp',
-      waiter: 'Phục vụ',
-      cashier: 'Thu ngân',
-      barista: 'Pha chế',
-      manager: 'Quản lý',
-    };
-
-    return <Badge className={styles[role]}>{labels[role]}</Badge>;
+    return <Badge className={styles[position] || 'bg-gray-100 text-gray-800'}>{position}</Badge>;
   };
 
   const getInitials = (name: string) => {
@@ -171,6 +225,22 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
     return new Intl.DateTimeFormat('vi-VN').format(date);
   };
 
+  if (!branchId) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-4">Không tìm thấy thông tin chi nhánh</p>
+          {onBack && (
+            <Button variant="outline" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Quay lại
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-muted/30">
       <div className="container mx-auto px-4 py-8">
@@ -185,7 +255,7 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
           <div>
             <h1 style={{ fontSize: '28px' }}>Quản lý nhân viên</h1>
             <p className="text-muted-foreground">
-              Thêm, sửa, xóa nhân viên ({staffList.length} nhân viên)
+              Quản lý nhân viên chi nhánh ({staffList.length} nhân viên)
             </p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -203,12 +273,12 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Họ và tên *</Label>
+                  <Label htmlFor="fullName">Họ và tên *</Label>
                   <Input
-                    id="name"
+                    id="fullName"
                     placeholder="Nguyễn Văn A"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    value={formData.fullName}
+                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                   />
                 </div>
 
@@ -234,66 +304,72 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Vai trò *</Label>
-                    <Select 
-                      value={formData.role} 
-                      onValueChange={(value) => setFormData({ ...formData, role: value as Staff['role'] })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="chef">Đầu bếp</SelectItem>
-                        <SelectItem value="waiter">Phục vụ</SelectItem>
-                        <SelectItem value="cashier">Thu ngân</SelectItem>
-                        <SelectItem value="barista">Pha chế</SelectItem>
-                        <SelectItem value="manager">Quản lý</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Trạng thái</Label>
-                    <Select 
-                      value={formData.status} 
-                      onValueChange={(value) => setFormData({ ...formData, status: value as Staff['status'] })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Đang làm việc</SelectItem>
-                        <SelectItem value="inactive">Đã nghỉ việc</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Địa chỉ</Label>
+                  <Input
+                    id="address"
+                    placeholder="123 Đường ABC, Quận XYZ"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="avatar">URL ảnh đại diện (tùy chọn)</Label>
-                  <Input
-                    id="avatar"
-                    placeholder="https://..."
-                    value={formData.avatar}
-                    onChange={(e) => setFormData({ ...formData, avatar: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    💡 Nếu để trống, hệ thống sẽ hiển thị avatar mặc định
-                  </p>
+                  <Label htmlFor="position">Vai trò *</Label>
+                  <Select 
+                    value={formData.position} 
+                    onValueChange={(value) => setFormData({ ...formData, position: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STAFF_POSITIONS.map((pos) => (
+                        <SelectItem key={pos.value} value={pos.value}>
+                          {pos.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {/* Status toggle - only show when editing */}
+                {editingStaff && (
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <Label htmlFor="isActive">Trạng thái</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.isActive ? 'Nhân viên đang làm việc' : 'Nhân viên đã nghỉ việc'}
+                      </p>
+                    </div>
+                    <Switch
+                      id="isActive"
+                      checked={formData.isActive}
+                      onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                    />
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-4">
                   <Button 
                     className="flex-1 bg-primary hover:bg-primary/90"
                     onClick={handleSave}
+                    disabled={isSaving}
                   >
-                    {editingStaff ? 'Cập nhật' : 'Thêm nhân viên'}
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Đang lưu...
+                      </>
+                    ) : (
+                      editingStaff ? 'Cập nhật' : 'Thêm nhân viên'
+                    )}
                   </Button>
                   <Button
                     variant="outline"
                     className="flex-1"
                     onClick={() => setIsDialogOpen(false)}
+                    disabled={isSaving}
                   >
                     Hủy
                   </Button>
@@ -321,107 +397,114 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
         {/* Staff Table */}
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[250px]">Nhân viên</TableHead>
-                  <TableHead>Vai trò</TableHead>
-                  <TableHead>Liên hệ</TableHead>
-                  <TableHead>Ngày vào làm</TableHead>
-                  <TableHead className="text-center">Trạng thái</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStaff.map((staff) => (
-                  <TableRow key={staff.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={staff.avatar} />
-                          <AvatarFallback className="bg-primary text-primary-foreground">
-                            {getInitials(staff.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{staff.name}</div>
-                          <div className="text-sm text-muted-foreground">{staff.email}</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {getRoleBadge(staff.role)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Mail className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">{staff.email}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Phone className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">{staff.phone}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{formatDate(staff.joinedDate)}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {staff.status === 'active' ? (
-                        <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
-                          Đang làm
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">Đã nghỉ</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleEdit(staff)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleToggleStatus(staff.id)}
-                        >
-                          {staff.status === 'active' ? (
-                            <UserX className="h-4 w-4 text-orange-600" />
-                          ) : (
-                            <UserCheck className="h-4 w-4 text-green-600" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleResetPassword(staff)}
-                        >
-                          <KeyRound className="h-4 w-4 text-blue-600" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDelete(staff)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-2">Đang tải...</span>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[250px]">Nhân viên</TableHead>
+                    <TableHead>Vai trò</TableHead>
+                    <TableHead>Liên hệ</TableHead>
+                    <TableHead>Ngày vào làm</TableHead>
+                    <TableHead className="text-center">Trạng thái</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredStaff.map((staff) => (
+                    <TableRow key={staff.id} className={staff.status === 'INACTIVE' ? 'opacity-60' : ''}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarFallback className="bg-primary text-primary-foreground">
+                              {getInitials(staff.fullName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{staff.fullName}</div>
+                            <div className="text-sm text-muted-foreground">{staff.email}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {getPositionBadge(staff.position)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">{staff.email}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <Phone className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">{staff.phone}</span>
+                          </div>
+                          {staff.address && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-muted-foreground line-clamp-1">{staff.address}</span>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{formatDate(staff.createdAt)}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {staff.status === 'ACTIVE' ? (
+                          <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
+                            Đang làm
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Đã nghỉ</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEdit(staff)}
+                            title="Chỉnh sửa"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleToggleStatus(staff)}
+                            title={staff.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                          >
+                            {staff.status === 'ACTIVE' ? (
+                              <UserX className="h-4 w-4 text-orange-600" />
+                            ) : (
+                              <UserCheck className="h-4 w-4 text-green-600" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleResetPassword(staff)}
+                            title="Đặt lại mật khẩu"
+                          >
+                            <KeyRound className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
 
-            {filteredStaff.length === 0 && (
+            {!isLoading && filteredStaff.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">
                   Không tìm thấy nhân viên nào
@@ -445,7 +528,7 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">Đang làm việc</div>
               <div style={{ fontSize: '24px', fontWeight: 700 }} className="text-green-600">
-                {staffList.filter(s => s.status === 'active').length}
+                {staffList.filter(s => s.status === 'ACTIVE').length}
               </div>
             </CardContent>
           </Card>
@@ -453,34 +536,12 @@ export function StaffManagement({ onBack }: StaffManagementProps) {
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">Đã nghỉ việc</div>
               <div style={{ fontSize: '24px', fontWeight: 700 }} className="text-muted-foreground">
-                {staffList.filter(s => s.status === 'inactive').length}
+                {staffList.filter(s => s.status === 'INACTIVE').length}
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xóa nhân viên</AlertDialogTitle>
-            <AlertDialogDescription>
-              Bạn có chắc chắn muốn xóa nhân viên <strong>{staffToDelete?.name}</strong>? 
-              Hành động này không thể hoàn tác.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Xóa
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
