@@ -1,15 +1,12 @@
-import { Coffee, Search, ShoppingCart, User, Menu, LogOut, UserCircle, Calendar } from 'lucide-react';
+import { Coffee, Search, Menu, LogOut, UserCircle, Calendar } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import { Customer } from '../../types';
 
 interface HeaderProps {
-  cartCount?: number;
   onMenuClick?: () => void;
-  onCartClick?: () => void;
   isLoggedIn?: boolean;
   customer?: Customer;
   onLogin?: () => void;
@@ -23,9 +20,7 @@ interface HeaderProps {
 }
 
 export function Header({ 
-  cartCount = 0, 
   onMenuClick, 
-  onCartClick,
   isLoggedIn = false,
   customer,
   onLogin,
@@ -98,23 +93,6 @@ export function Header({
                   Đặt bàn
                 </Button>
 
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="relative"
-                  onClick={onCartClick}
-                >
-                  <ShoppingCart className="h-5 w-5" />
-                  {cartCount > 0 && (
-                    <Badge 
-                      className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 rounded-full"
-                      style={{ fontSize: '10px' }}
-                    >
-                      {cartCount}
-                    </Badge>
-                  )}
-                </Button>
-
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-2">
@@ -140,10 +118,6 @@ export function Header({
                     <DropdownMenuItem onClick={onReservation}>
                       <Calendar className="mr-2 h-4 w-4" />
                       <span>Đặt bàn</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <ShoppingCart className="mr-2 h-4 w-4" />
-                      <span>Đơn hàng của tôi</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={onLogout} className="text-destructive">

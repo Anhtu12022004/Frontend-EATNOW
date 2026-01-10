@@ -15,10 +15,8 @@ import { AuthPage } from "./components/pages/AuthPage";
 import { ProfilePage } from "./components/pages/ProfilePage";
 import { TableReservationPage } from "./components/pages/TableReservationPage";
 import { ForgotPasswordPage } from "./components/pages/ForgotPasswordPage";
-import { CartSheet } from "./components/cart/CartSheet";
 import { CustomerOrderPage } from "./components/pages/CustomerOrderPage";
 import {
-  CartItem,
   MenuItem,
   UserRole,
   Customer,
@@ -104,8 +102,6 @@ export default function App() {
 
   const [currentPage, setCurrentPage] = useState<Page>("landing");
   const [selectedBranchId, setSelectedBranchId] = useState<string>("1");
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
   const [lastOrderId, setLastOrderId] = useState<string>("");
   const [userRole, setUserRole] = useState<UserRole>(initialAuth.role);
   const [isLoggedIn, setIsLoggedIn] = useState(!!initialAuth.user);
@@ -119,51 +115,8 @@ export default function App() {
   const [reservations, setReservations] =
     useState<Reservation[]>(mockReservations);
 
-  // Cart functions
-  const addToCart = (item: MenuItem) => {
-    const existingItem = cartItems.find((ci) => ci.id === item.id);
-
-    if (existingItem) {
-      setCartItems(
-        cartItems.map((ci) =>
-          ci.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci
-        )
-      );
-      toast.success("Đã thêm vào giỏ hàng", {
-        description: `${item.name} (${existingItem.quantity + 1})`,
-      });
-    } else {
-      setCartItems([...cartItems, { ...item, quantity: 1 }]);
-      toast.success("Đã thêm vào giỏ hàng", {
-        description: item.name,
-      });
-    }
-    setCartOpen(true);
-  };
-
-  const updateQuantity = (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(itemId);
-      return;
-    }
-    setCartItems(
-      cartItems.map((item) =>
-        item.id === itemId ? { ...item, quantity } : item
-      )
-    );
-  };
-
-  const removeFromCart = (itemId: string) => {
-    setCartItems(cartItems.filter((item) => item.id !== itemId));
-    toast.info("Đã xóa khỏi giỏ hàng");
-  };
-
+  // Checkout functions
   const handleCheckout = () => {
-    if (cartItems.length === 0) {
-      toast.error("Giỏ hàng trống");
-      return;
-    }
-    setCartOpen(false);
     setCurrentPage("checkout");
   };
 
@@ -368,7 +321,6 @@ export default function App() {
     setCustomer(null);
     setUserRole("guest");
     setIsLoggedIn(false);
-    setCartItems([]);
     setAdminPage("dashboard");
     saveAuthToStorage(null, "guest");
     setCurrentPage("landing");
@@ -563,16 +515,13 @@ export default function App() {
           <MenuPage
             branchId={selectedBranchId}
             onBack={() => setCurrentPage("landing")}
-            onAddToCart={addToCart}
-            onOpenCart={() => setCartOpen(true)}
-            cartCount={cartItems.length}
           />
         );
 
       case "checkout":
         return (
           <CheckoutPage
-            items={cartItems}
+            items={[]}
             onBack={() => setCurrentPage("menu")}
             onConfirm={handleConfirmOrder}
           />
@@ -592,7 +541,6 @@ export default function App() {
         return (
           <LandingPage
             onViewMenu={handleViewMenu}
-            onAddToCart={addToCart}
             onViewBranches={() => setCurrentPage("branches")}
           />
         );
@@ -606,8 +554,6 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       {showHeaderFooter && (
         <Header
-          cartCount={cartItems.length}
-          onCartClick={() => setCartOpen(true)}
           isLoggedIn={isLoggedIn}
           customer={customer || undefined}
           onLogin={() => setCurrentPage("auth")}
@@ -620,16 +566,6 @@ export default function App() {
       <main className="flex-1">{renderContent()}</main>
 
       {showHeaderFooter && <Footer />}
-
-      {/* Cart Sheet */}
-      <CartSheet
-        open={cartOpen}
-        onOpenChange={setCartOpen}
-        items={cartItems}
-        onUpdateQuantity={updateQuantity}
-        onRemoveItem={removeFromCart}
-        onCheckout={handleCheckout}
-      />
 
       <Toaster
         position="top-right"

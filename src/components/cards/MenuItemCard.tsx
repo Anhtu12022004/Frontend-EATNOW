@@ -1,5 +1,3 @@
-import { Plus } from 'lucide-react';
-import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { MenuItem } from '../../types';
@@ -7,10 +5,9 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 
 interface MenuItemCardProps {
   item: MenuItem;
-  onAddToCart?: (item: MenuItem) => void;
 }
 
-export function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
+export function MenuItemCard({ item }: MenuItemCardProps) {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN').format(price) + ' ₫';
   };
@@ -48,18 +45,10 @@ export function MenuItemCard({ item, onAddToCart }: MenuItemCardProps) {
           </p>
         </div>
         
-        <div className="flex items-center justify-between">
+        <div>
           <span className="text-primary" style={{ fontWeight: 600 }}>
             {formatPrice(item.price)}
           </span>
-          <Button
-            size="icon"
-            className="h-9 w-9 rounded-full bg-primary hover:bg-primary/90"
-            onClick={() => onAddToCart?.(item)}
-            disabled={!item.available}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
         </div>
       </CardContent>
     </Card>
