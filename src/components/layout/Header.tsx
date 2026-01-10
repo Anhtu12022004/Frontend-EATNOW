@@ -17,6 +17,9 @@ interface HeaderProps {
   onProfile?: () => void;
   onReservation?: () => void;
   onLogoClick?: () => void;
+  categories?: string[];
+  onCategorySelect?: (category: string) => void;
+  selectedCategory?: string;
 }
 
 export function Header({ 
@@ -29,7 +32,10 @@ export function Header({
   onLogout,
   onProfile,
   onReservation,
-  onLogoClick = () => window.location.href = '/'
+  onLogoClick = () => window.location.href = '/',
+  categories = [],
+  onCategorySelect,
+  selectedCategory
 }: HeaderProps) {
   const getInitials = (name: string) => {
     return name
@@ -177,6 +183,25 @@ export function Header({
             />
           </div>
         </div>
+
+        {/* Categories Menu */}
+        {categories.length > 0 && (
+          <div className="border-t py-3 -mx-4 px-4">
+            <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {categories.map((category) => (
+                <Button
+                  key={category}
+                  variant={selectedCategory === category ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => onCategorySelect?.(category)}
+                  className="whitespace-nowrap h-10 rounded-full"
+                >
+                  {category}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

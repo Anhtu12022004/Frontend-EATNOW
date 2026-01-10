@@ -41,6 +41,47 @@ interface CreateOrderRequest {
   total_price: number;
 }
 
+/**
+ * Interface cho request tạo order mới (API mới)
+ */
+interface CreateCustomerOrderRequest {
+  branchId: string;
+  tableNumber: number;
+  infoOrders: {
+    branchDishId: string;
+    quantity: number;
+  }[];
+}
+
+/**
+ * Interface cho response tạo order
+ */
+interface CreateOrderResponse {
+  orderId: string;
+  totalPrice: number;
+  status: string;
+}
+
+/**
+ * Interface cho response chi tiết order
+ */
+interface OrderDetailResponse {
+  id: string;
+  totalPrice: number;
+  orderTime: string;
+  status: string;
+  userId: string;
+  branchId: string;
+  tableId: string;
+  orderItemInfos: {
+    id: string;
+    quantity: number;
+    unitPrice: number;
+    orderId: string;
+    branchDishId: string;
+  }[];
+}
+
 class OrderService {
   /**
    * Tạo đơn hàng mới
@@ -183,6 +224,42 @@ class OrderService {
       throw new Error(apiError.message || 'Không thể tải danh sách đơn hàng');
     }
   }
+
+  /**
+   * Tạo đơn hàng từ tablet khách hàng tại quán
+   * POST /api/eatnow/order
+   * @param data Thông tin đơn hàng (branchId, tableNumber, infoOrders)
+   * @returns Thông tin đơn hàng vừa tạo
+   */
+  async createCustomerOrder(data: CreateCustomerOrderRequest): Promise<CreateOrderResponse> {
+    try {
+      const response = await apiClient.post<CreateOrderResponse>('/eatnow/order', data);
+      return response.data;
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error creating customer order:', apiError);
+      throw new Error(apiError.message || 'Không thể tạo đơn hàng');
+    }
+  }
+
+  /**
+   * Lấy chi tiết đơn hàng theo ID (API mới)
+   * GET /api/eatnow/order/{orderId}
+   * @param orderId ID đơn hàng
+   * @returns Chi tiết đơn hàng
+   */
+  async getOrderDetail(orderId: string): Promise<OrderDetailResponse> {
+    try {
+      const response = await apiClient.get<OrderDetailResponse>(`/eatnow/order/${orderId}`);
+      return response.data;
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error fetching order detail:', apiError);
+      throw new Error(apiError.message || 'Không thể tải chi tiết đơn hàng');
+    }
+  }
 }
+
+export type { CreateCustomerOrderRequest, CreateOrderResponse, OrderDetailResponse };
 
 export const orderService = new OrderService();

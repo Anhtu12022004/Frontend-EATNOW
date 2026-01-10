@@ -20,6 +20,7 @@ import { AdminDashboard } from "./components/pages/AdminDashboard";
 import { SuperAdminDashboard } from "./components/pages/SuperAdminDashboard";
 import { MenuManagement } from "./components/pages/MenuManagement";
 import { StaffManagement } from "./components/pages/StaffManagement";
+import { CustomerOrderPage } from "./components/pages/CustomerOrderPage";
 import { useAuth } from "./contexts/AuthContext";
 import { useCart } from "./hooks/useCart";
 import { CartSheet } from "./components/cart/CartSheet";
@@ -349,6 +350,10 @@ export const router = createBrowserRouter([
   {
     path: "/forgot-password",
     element: <ForgotPasswordPageWrapper />,
+  },
+  {
+    path: "/order",
+    element: <CustomerOrderPage />,
   },
   {
     path: "/staff",

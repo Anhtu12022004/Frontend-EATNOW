@@ -16,6 +16,7 @@ import { ProfilePage } from "./components/pages/ProfilePage";
 import { TableReservationPage } from "./components/pages/TableReservationPage";
 import { ForgotPasswordPage } from "./components/pages/ForgotPasswordPage";
 import { CartSheet } from "./components/cart/CartSheet";
+import { CustomerOrderPage } from "./components/pages/CustomerOrderPage";
 import {
   CartItem,
   MenuItem,
@@ -76,6 +77,28 @@ const saveAuthToStorage = (user: Customer | null, role: UserRole) => {
 };
 
 export default function App() {
+  // Check if current path is /order (for tablet ordering)
+  const isOrderPage = window.location.pathname === "/order";
+
+  // If on /order page, render CustomerOrderPage directly without header/footer
+  if (isOrderPage) {
+    return (
+      <>
+        <CustomerOrderPage />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: "var(--background)",
+              color: "var(--foreground)",
+              border: "1px solid var(--border)",
+            },
+          }}
+        />
+      </>
+    );
+  }
+
   // Load initial state from localStorage
   const initialAuth = loadAuthFromStorage();
 
