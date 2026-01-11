@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Camera, Save, Package, Star, MessageSquare } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Camera, Save, Package, Star, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -9,21 +9,21 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Separator } from '../ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
-import { Customer, Order, Rating, MenuItem } from '../../types';
+import { Customer } from '../../types';
 import { toast } from 'sonner';
-import { RatingDialog } from './RatingDialog';
+import { DishRatingDialog } from './DishRatingDialog';
+import { customerService, CustomerOrderResponse, OrderItemInfo } from '../../services/customer';
 
 interface ProfilePageProps {
   customer: Customer;
   onBack: () => void;
   onUpdate: (updatedCustomer: Customer) => void;
   onLogout: () => void;
-  orders?: Order[];
-  onRatingSubmit?: (rating: Omit<Rating, 'id' | 'createdAt' | 'status'>) => void;
 }
 
-export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [], onRatingSubmit }: ProfilePageProps) {
+export function ProfilePage({ customer, onBack, onUpdate, onLogout }: ProfilePageProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: customer.name,
     email: customer.email,
@@ -31,15 +31,21 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
     address: customer.address || '',
     avatar: customer.avatar || ''
   });
+  
+  // Order history state
+  const [orders, setOrders] = useState<CustomerOrderResponse[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  
+  // Rating dialog state
   const [ratingDialog, setRatingDialog] = useState<{
     open: boolean;
-    order: Order | null;
-    type: 'dish' | 'branch';
-    dish?: MenuItem;
+    orderId: string;
+    dish: OrderItemInfo | null;
   }>({
     open: false,
-    order: null,
-    type: 'branch'
+    orderId: '',
+    dish: null
   });
 
   const getInitials = (name: string) => {
@@ -59,7 +65,8 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
     }).format(date);
   };
 
-  const formatDateTime = (date: Date) => {
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
     return new Intl.DateTimeFormat('vi-VN', {
       day: '2-digit',
       month: '2-digit',
@@ -76,7 +83,34 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
     }).format(amount);
   };
 
-  const handleSave = () => {
+  // Fetch order history
+  const fetchOrderHistory = async () => {
+    if (!customer.id) return;
+    
+    setIsLoadingOrders(true);
+    setOrdersError(null);
+    
+    try {
+      const data = await customerService.getOrderHistory(customer.id);
+      // Sort orders by date (newest first)
+      const sortedOrders = data.sort((a, b) => 
+        new Date(b.orderTime).getTime() - new Date(a.orderTime).getTime()
+      );
+      setOrders(sortedOrders);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Không thể tải lịch sử đơn hàng';
+      setOrdersError(errorMessage);
+      console.error('Error fetching order history:', error);
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrderHistory();
+  }, [customer.id]);
+
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       toast.error('Vui lòng nhập họ tên');
       return;
@@ -90,18 +124,33 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
       return;
     }
 
-    const updatedCustomer: Customer = {
-      ...customer,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      address: formData.address || undefined,
-      avatar: formData.avatar || undefined
-    };
+    setIsSaving(true);
+    try {
+      await customerService.updateProfile({
+        fullName: formData.name,
+        email: formData.email,
+        phoneNumber: formData.phone,
+        address: formData.address || undefined
+      });
 
-    onUpdate(updatedCustomer);
-    setIsEditing(false);
-    toast.success('Cập nhật thông tin thành công');
+      const updatedCustomer: Customer = {
+        ...customer,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address || undefined,
+        avatar: formData.avatar || undefined
+      };
+
+      onUpdate(updatedCustomer);
+      setIsEditing(false);
+      toast.success('Cập nhật thông tin thành công');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Không thể cập nhật thông tin';
+      toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -115,54 +164,57 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
     setIsEditing(false);
   };
 
-  const getStatusBadge = (status: Order['status']) => {
-    const variants: Record<Order['status'], { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-      pending: { variant: 'secondary', label: 'Chờ xác nhận' },
-      preparing: { variant: 'default', label: 'Đang chuẩn bị' },
-      ready: { variant: 'outline', label: 'Sẵn sàng' },
-      completed: { variant: 'default', label: 'Hoàn tất' },
-      cancelled: { variant: 'destructive', label: 'Đã hủy' }
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
+      NEW: { variant: 'secondary', label: 'Mới' },
+      PREPARING: { variant: 'default', label: 'Đang chuẩn bị' },
+      PAID: { variant: 'default', label: 'Đã thanh toán' },
+      CANCELLED: { variant: 'destructive', label: 'Đã hủy' }
     };
 
-    const { variant, label } = variants[status];
-    return <Badge variant={variant}>{label}</Badge>;
+    const config = variants[status] || { variant: 'outline', label: status };
+    return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
-  const handleRateDish = (order: Order, dish: MenuItem) => {
-    if (order.hasRated) {
-      toast.error('Bạn đã đánh giá đơn hàng này rồi');
+  const handleRateDish = (orderId: string, dish: OrderItemInfo) => {
+    if (dish.isCommented) {
+      toast.info('Bạn đã đánh giá món này rồi');
       return;
     }
     setRatingDialog({
       open: true,
-      order,
-      type: 'dish',
+      orderId,
       dish
     });
   };
 
-  const handleRateBranch = (order: Order) => {
-    if (order.hasRated) {
-      toast.error('Bạn đã đánh giá đơn hàng này rồi');
-      return;
-    }
-    setRatingDialog({
-      open: true,
-      order,
-      type: 'branch'
-    });
-  };
-
-  const handleRatingSubmit = (rating: Omit<Rating, 'id' | 'createdAt' | 'status'>) => {
-    if (onRatingSubmit) {
-      onRatingSubmit(rating);
+  const handleRatingSubmit = async (data: { rating: number; comment: string; orderId: string; branchDishId: string }) => {
+    try {
+      await customerService.submitFeedback(data);
       toast.success('Cảm ơn bạn đã đánh giá!');
+      
+      // Update local state to mark the item as commented
+      setOrders(prevOrders => 
+        prevOrders.map(order => {
+          if (order.id === data.orderId) {
+            return {
+              ...order,
+              orderItemInfos: order.orderItemInfos.map(item => 
+                item.branchDishId === data.branchDishId 
+                  ? { ...item, isCommented: true }
+                  : item
+              )
+            };
+          }
+          return order;
+        })
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Không thể gửi đánh giá';
+      toast.error(errorMessage);
+      throw error;
     }
   };
-
-  // Filter orders for this customer
-  const customerOrders = orders.filter(order => order.customerId === customer.id);
-  const completedOrders = customerOrders.filter(order => order.status === 'completed');
 
   return (
     <div className="min-h-screen bg-muted/30 py-8">
@@ -207,8 +259,14 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
                       variant={isEditing ? 'default' : 'outline'}
                       className="w-full"
                       onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+                      disabled={isSaving}
                     >
-                      {isEditing ? (
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Đang lưu...
+                        </>
+                      ) : isEditing ? (
                         <>
                           <Save className="h-4 w-4 mr-2" />
                           Lưu thay đổi
@@ -223,6 +281,7 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
                         variant="ghost"
                         className="w-full"
                         onClick={handleCancel}
+                        disabled={isSaving}
                       >
                         Hủy
                       </Button>
@@ -244,7 +303,7 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
           {/* Right Column - Tabs */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="info" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="info">
                   <User className="h-4 w-4 mr-2" />
                   Thông tin
@@ -252,9 +311,6 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
                 <TabsTrigger value="orders">
                   <Package className="h-4 w-4 mr-2" />
                   Đơn hàng
-                </TabsTrigger>
-                <TabsTrigger value="security">
-                  Bảo mật
                 </TabsTrigger>
               </TabsList>
 
@@ -356,21 +412,6 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
                         </div>
                       )}
                     </div>
-
-                    {isEditing && (
-                      <div className="space-y-2">
-                        <Label htmlFor="avatar">URL ảnh đại diện (tùy chọn)</Label>
-                        <Input
-                          id="avatar"
-                          placeholder="https://..."
-                          value={formData.avatar}
-                          onChange={(e) => setFormData({ ...formData, avatar: e.target.value })}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Nhập URL hình ảnh hoặc để trống để sử dụng avatar mặc định
-                        </p>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -385,99 +426,98 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {customerOrders.length === 0 ? (
+                    {isLoadingOrders ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-muted-foreground">Đang tải...</span>
+                      </div>
+                    ) : ordersError ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-destructive">{ordersError}</p>
+                        <Button 
+                          variant="outline" 
+                          className="mt-4"
+                          onClick={fetchOrderHistory}
+                        >
+                          Thử lại
+                        </Button>
+                      </div>
+                    ) : orders.length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground">
                         <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p>Bạn chưa có đơn hàng nào</p>
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {customerOrders.map((order) => (
+                        {orders.map((order) => (
                           <Card key={order.id} className="overflow-hidden">
                             <CardHeader className="pb-3">
                               <div className="flex items-start justify-between">
                                 <div>
-                                  <CardTitle className="text-base">{order.id}</CardTitle>
+                                  <CardTitle className="text-base">Đơn #{order.id.slice(0, 8)}</CardTitle>
                                   <CardDescription>{order.branchName}</CardDescription>
                                 </div>
                                 {getStatusBadge(order.status)}
                               </div>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                {formatDateTime(order.createdAt)}
-                              </p>
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
+                                <span>{formatDateTime(order.orderTime)}</span>
+                                <span>•</span>
+                                <span>Bàn {order.tableNumber}</span>
+                              </div>
                             </CardHeader>
                             <CardContent className="space-y-3">
                               <div className="space-y-2">
-                                {order.items.map((item, idx) => (
-                                  <div key={idx} className="flex justify-between text-sm">
+                                {order.orderItemInfos.map((item) => (
+                                  <div key={item.id} className="flex justify-between items-center text-sm">
                                     <span className="text-muted-foreground">
                                       {item.quantity}x {item.name}
                                     </span>
-                                    <span>{formatCurrency(item.price * item.quantity)}</span>
+                                    <span>{formatCurrency(item.unitPrice * item.quantity)}</span>
                                   </div>
                                 ))}
                               </div>
                               
                               <Separator />
                               
-                              <div className="flex justify-between">
+                              <div className="flex justify-between font-medium">
                                 <span>Tổng cộng</span>
-                                <span>{formatCurrency(order.total)}</span>
+                                <span>{formatCurrency(order.totalPrice)}</span>
                               </div>
 
-                              {order.status === 'completed' && (
-                                <div className="pt-2 space-y-2">
+                              {/* Rating Section */}
+                              {order.status === 'PAID' && (
+                                <>
                                   <Separator />
-                                  {order.hasRated ? (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                      <span>Bạn đã đánh giá đơn hàng này</span>
-                                    </div>
-                                  ) : (
+                                  <div className="space-y-2">
+                                    <p className="text-sm font-medium">Đánh giá món ăn</p>
                                     <div className="flex flex-wrap gap-2">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleRateBranch(order)}
-                                      >
-                                        <Star className="h-4 w-4 mr-2" />
-                                        Đánh giá chi nhánh
-                                      </Button>
-                                      {order.items.length === 1 && (
+                                      {order.orderItemInfos.map((item) => (
                                         <Button
-                                          variant="outline"
+                                          key={item.id}
+                                          variant={item.isCommented ? 'ghost' : 'outline'}
                                           size="sm"
-                                          onClick={() => handleRateDish(order, order.items[0])}
+                                          className={item.isCommented ? 'cursor-default' : ''}
+                                          onClick={() => handleRateDish(order.id, item)}
                                         >
-                                          <MessageSquare className="h-4 w-4 mr-2" />
-                                          Đánh giá món ăn
+                                          <Star 
+                                            className={`h-4 w-4 mr-2 ${
+                                              item.isCommented 
+                                                ? 'fill-yellow-400 text-yellow-400' 
+                                                : 'text-gray-400'
+                                            }`} 
+                                          />
+                                          <span className={item.isCommented ? 'text-muted-foreground' : ''}>
+                                            {item.name}
+                                          </span>
+                                          {item.isCommented && (
+                                            <span className="ml-1 text-xs text-muted-foreground">(Đã đánh giá)</span>
+                                          )}
                                         </Button>
-                                      )}
+                                      ))}
                                     </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {order.status === 'completed' && !order.hasRated && order.items.length > 1 && (
-                                <details className="text-sm">
-                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                                    Đánh giá từng món ăn
-                                  </summary>
-                                  <div className="mt-2 space-y-1 pl-4">
-                                    {order.items.map((item, idx) => (
-                                      <Button
-                                        key={idx}
-                                        variant="ghost"
-                                        size="sm"
-                                        className="w-full justify-start"
-                                        onClick={() => handleRateDish(order, item)}
-                                      >
-                                        <Star className="h-4 w-4 mr-2" />
-                                        {item.name}
-                                      </Button>
-                                    ))}
                                   </div>
-                                </details>
+                                </>
                               )}
                             </CardContent>
                           </Card>
@@ -487,34 +527,16 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout, orders = [],
                   </CardContent>
                 </Card>
               </TabsContent>
-
-              {/* Security Tab */}
-              <TabsContent value="security">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Bảo mật</CardTitle>
-                    <CardDescription>
-                      Quản lý mật khẩu và bảo mật tài khoản
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline">
-                      Đổi mật khẩu
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
             </Tabs>
           </div>
         </div>
       </div>
 
       {/* Rating Dialog */}
-      <RatingDialog
+      <DishRatingDialog
         open={ratingDialog.open}
         onClose={() => setRatingDialog({ ...ratingDialog, open: false })}
-        order={ratingDialog.order}
-        type={ratingDialog.type}
+        orderId={ratingDialog.orderId}
         dish={ratingDialog.dish}
         onSubmit={handleRatingSubmit}
       />

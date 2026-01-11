@@ -10,6 +10,8 @@ export { paymentService } from './payment';
 export { feedbackService } from './feedback';
 export { userService } from './user';
 export { tableService as tableAvailabilityService } from './table';
+export { customerService } from './customer';
+export type { CustomerOrderResponse, OrderItemInfo, UpdateCustomerRequest, CreateFeedbackRequest, FeedbackResponse } from './customer';
 
 // ============ Auth Service ============
 export interface LoginRequest {
@@ -144,25 +146,6 @@ export const tableService = {
 
   updateStatus: async (id: string, status: Table['status']) => {
     return apiClient.patch<Table>(`/tables/${id}/status`, { status });
-  },
-};
-
-// ============ Customer Service (Legacy - use userService) ============
-export const customerService = {
-  getAll: async (params?: { search?: string }) => {
-    return apiClient.get<Customer[]>('/customers', params as Record<string, string>);
-  },
-
-  getById: async (id: string) => {
-    return apiClient.get<Customer>(`/customers/${id}`);
-  },
-
-  update: async (id: string, data: Partial<Customer>) => {
-    return apiClient.put<Customer>(`/customers/${id}`, data);
-  },
-
-  delete: async (id: string) => {
-    return apiClient.delete(`/customers/${id}`);
   },
 };
 

@@ -234,10 +234,6 @@ function ProfilePageWrapper() {
         logout();
         window.location.href = "/";
       }}
-      orders={mockOrders.filter((o) => o.customerId === user.id)}
-      onRatingSubmit={(rating) => {
-        toast.success("Cảm ơn bạn đã đánh giá!");
-      }}
     />
   );
 }
