@@ -66,11 +66,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Login with real API
   const login = useCallback(
-    async (email: string, password: string): Promise<boolean> => {
+    async (emailOrPhone: string, password: string): Promise<boolean> => {
       setState((prev) => ({ ...prev, isLoading: true }));
 
       try {
-        // Call real API
+        // Call real API - backend accepts both email and phone in the "email" field
         const response = await apiClient.post<{
           id: string;
           fullName: string;
@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: string;
           role: string;
           branchId?: string;
-        }>("/auth/login", { email, password });
+        }>("/auth/login", { email: emailOrPhone, password });
 
         // Extract token and user data from response
         const token = response.token;

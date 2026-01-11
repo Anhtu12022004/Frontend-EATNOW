@@ -3,7 +3,7 @@ import { Coffee, Mail, Lock, User, Phone, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { Card, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Separator } from '../ui/separator';
 import { toast } from 'sonner';
@@ -21,7 +21,7 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
   const [isRegistering, setIsRegistering] = useState(false);
   
   // Login state
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginEmailOrPhone, setLoginEmailOrPhone] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   
   // Register state
@@ -31,16 +31,24 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
 
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const isValidPhone = (phone: string) => /^[0-9]{10,}$/.test(phone.replace(/\D/g, ''));
+
   const handleLogin = () => {
-    if (!loginEmail || !loginPassword) {
+    if (!loginEmailOrPhone || !loginPassword) {
       toast.error('Vui lòng nhập đầy đủ thông tin');
       return;
     }
-    if (!loginEmail.includes('@')) {
-      toast.error('Email không hợp lệ');
+    
+    const isEmail = isValidEmail(loginEmailOrPhone);
+    const isPhone = isValidPhone(loginEmailOrPhone);
+    
+    if (!isEmail && !isPhone) {
+      toast.error('Vui lòng nhập email hoặc số điện thoại hợp lệ');
       return;
     }
-    onLogin(loginEmail, loginPassword);
+    
+    onLogin(loginEmailOrPhone, loginPassword);
   };
 
   const handleRegister = async () => {
@@ -71,7 +79,7 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
       
       if (result.success) {
         // Chuyển sang tab đăng nhập và điền email
-        setLoginEmail(result.email || registerEmail);
+        setLoginEmailOrPhone(result.email || registerEmail);
         setLoginPassword('');
         setActiveTab('login');
         
@@ -126,16 +134,16 @@ export function AuthPage({ onLogin, onRegister, onBack, onForgotPassword }: Auth
 
                 <div className="space-y-4 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
+                    <Label htmlFor="login-email-or-phone">Email hoặc Số điện thoại</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        id="login-email"
-                        type="email"
-                        placeholder="email@example.com"
+                        id="login-email-or-phone"
+                        type="text"
+                        placeholder="email@example.com hoặc 0123456789"
                         className="pl-10"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
+                        value={loginEmailOrPhone}
+                        onChange={(e) => setLoginEmailOrPhone(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
                       />
                     </div>

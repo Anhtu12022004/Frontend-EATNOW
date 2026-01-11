@@ -144,17 +144,21 @@ export default function App() {
   const handleLogin = async (email: string, password: string) => {
     // Validation
     if (!email || !password) {
-      toast.error("Vui lòng nhập email và mật khẩu", {
+      toast.error("Vui lòng nhập email/số điện thoại và mật khẩu", {
         description: "Tất cả các trường bắt buộc",
       });
       return;
     }
 
-    // Validate email format
+    // Validate email or phone format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error("Email không hợp lệ", {
-        description: "Vui lòng nhập email đúng định dạng",
+    const phoneRegex = /^[0-9]{10,}$/;
+    const isEmail = emailRegex.test(email);
+    const isPhone = phoneRegex.test(email.replace(/\D/g, ''));
+    
+    if (!isEmail && !isPhone) {
+      toast.error("Email hoặc số điện thoại không hợp lệ", {
+        description: "Vui lòng nhập email hoặc số điện thoại đúng định dạng",
       });
       return;
     }
