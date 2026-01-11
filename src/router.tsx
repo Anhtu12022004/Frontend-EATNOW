@@ -239,23 +239,9 @@ function ProfilePageWrapper() {
 }
 
 function TableReservationPageWrapper() {
-  const { user } = useAuth();
-
-  if (!user) {
-    toast.error("Vui lòng đăng nhập để đặt bàn");
-    return <Navigate to="/auth" replace />;
-  }
-
   return (
     <TableReservationPage
-      branches={branches}
-      tables={mockTables}
-      customer={user}
       onBack={() => window.history.back()}
-      onReservationCreate={(reservation) => {
-        toast.success("Đặt bàn thành công!");
-        window.location.href = "/profile";
-      }}
     />
   );
 }

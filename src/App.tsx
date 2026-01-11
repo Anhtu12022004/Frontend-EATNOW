@@ -496,18 +496,9 @@ export default function App() {
         );
 
       case "reservation":
-        if (!customer) {
-          setCurrentPage("auth");
-          toast.error("Vui lòng đăng nhập để đặt bàn");
-          return null;
-        }
         return (
           <TableReservationPage
-            branches={branches}
-            tables={tables}
-            customer={customer}
             onBack={() => setCurrentPage("landing")}
-            onReservationCreate={handleReservationCreate}
           />
         );
 
