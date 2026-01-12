@@ -57,6 +57,10 @@ const loadAuthFromStorage = (): { user: Customer | null; role: UserRole } => {
     const stored = localStorage.getItem("eatnow_auth");
     if (stored) {
       const data = JSON.parse(stored);
+      // Convert joinedDate string back to Date object (JSON.parse converts Date to string)
+      if (data.user && data.user.joinedDate) {
+        data.user.joinedDate = new Date(data.user.joinedDate);
+      }
       return { user: data.user, role: data.role || "guest" };
     }
   } catch {
@@ -490,8 +494,6 @@ export default function App() {
             onBack={() => setCurrentPage("landing")}
             onUpdate={handleUpdateProfile}
             onLogout={handleLogout}
-            orders={orders}
-            onRatingSubmit={handleRatingSubmit}
           />
         );
 

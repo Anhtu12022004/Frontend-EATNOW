@@ -57,12 +57,14 @@ export function ProfilePage({ customer, onBack, onUpdate, onLogout }: ProfilePag
       .slice(0, 2);
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (date: Date | string) => {
+    // Handle both Date object and string (from JSON.parse of localStorage)
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
     return new Intl.DateTimeFormat('vi-VN', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
-    }).format(date);
+    }).format(dateObj);
   };
 
   const formatDateTime = (dateString: string) => {
