@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Loader2,
   Coffee,
+  Star,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -58,6 +59,19 @@ import { tableService } from "../../services/table";
 import { authService } from "../../services/auth";
 import { orderService, OrderDetailResponse } from "../../services/order";
 import { paymentService, CreatePaymentResponse } from "../../services/payment";
+import { DishDetailDialog, RatingStars, calculateAverageRating } from "./DishDetailDialog";
+
+// Interface for dish feedback
+interface DishFeedback {
+  id: string;
+  rating: number;
+  comment: string;
+  isVisible: boolean;
+  createdAt: string;
+  userId: string;
+  orderId: string;
+  branchDishId: string;
+}
 
 // Flow steps
 type OrderStep =
@@ -130,6 +144,13 @@ export function CustomerOrderPage() {
   // Polling interval ref
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Dish detail dialog state
+  const [selectedDish, setSelectedDish] = useState<MenuItem | null>(null);
+  const [showDishDetail, setShowDishDetail] = useState(false);
+
+  // Dish ratings cache
+  const [dishRatings, setDishRatings] = useState<Map<string, number>>(new Map());
+
   // Format price
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("vi-VN").format(price) + " ₫";
@@ -148,6 +169,37 @@ export function CustomerOrderPage() {
     selectedCategory === "all"
       ? menuItems
       : menuItems.filter((item) => item.category === selectedCategory);
+
+  // Fetch ratings for all menu items
+  const fetchDishRatings = useCallback(async (items: MenuItem[]) => {
+    const ratingsMap = new Map<string, number>();
+    
+    // Fetch ratings in parallel for all items
+    const ratingPromises = items.map(async (item) => {
+      try {
+        const response = await fetch(
+          `http://localhost:5214/api/eatnow/feedbacks/dish/${item.id}`,
+          { headers: { 'accept': '*/*' } }
+        );
+        
+        if (response.ok) {
+          const data: DishFeedback[] = await response.json();
+          const rating = calculateAverageRating(data);
+          return { id: item.id, rating };
+        }
+      } catch (error) {
+        console.error(`Error fetching rating for dish ${item.id}:`, error);
+      }
+      return { id: item.id, rating: 0 };
+    });
+
+    const results = await Promise.all(ratingPromises);
+    results.forEach(({ id, rating }) => {
+      ratingsMap.set(id, rating);
+    });
+
+    setDishRatings(ratingsMap);
+  }, []);
 
   // Load branches on mount
   useEffect(() => {
@@ -277,7 +329,12 @@ export function CustomerOrderPage() {
       // Load menu for branch
       setLoadingMenu(true);
       const menu = await menuService.getMenuItemsByBranch(String(selectedBranch.id));
-      setMenuItems(menu.filter((item) => item.available));
+      const availableMenu = menu.filter((item) => item.available);
+      setMenuItems(availableMenu);
+      
+      // Fetch ratings for all menu items
+      fetchDishRatings(availableMenu);
+      
       setLoadingMenu(false);
 
       setCurrentStep("menu");
@@ -411,6 +468,9 @@ export function CustomerOrderPage() {
     setOrderMenuItems(new Map());
     setSelectedPaymentMethod(null);
     setPaymentResult(null);
+    setSelectedDish(null);
+    setShowDishDetail(false);
+    setDishRatings(new Map());
 
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
@@ -741,50 +801,76 @@ export function CustomerOrderPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-5">
-                {filteredMenuItems.map((item) => (
-                  <Card
-                    key={item.id}
-                    className="group overflow-hidden rounded-2xl border bg-white shadow-sm hover:shadow-xl transition-all"
-                  >
-                    <div className="aspect-square overflow-hidden relative">
-                      <ImageWithFallback
-                        src={item.image}
-                        alt={item.name}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                      />
-                      {(item.bestSeller || item.isNew) && (
-                        <div className="absolute top-2 left-2 flex flex-col gap-1">
-                          {item.bestSeller && (
-                            <Badge className="bg-amber-500">Best Seller</Badge>
-                          )}
-                          {item.isNew && (
-                            <Badge className="bg-green-500">Mới</Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <CardContent className="p-3 md:p-4">
-                      <h4 className="font-semibold text-sm md:text-base leading-snug line-clamp-1">
-                        {item.name}
-                      </h4>
-                      <p className="text-xs md:text-sm text-gray-500 line-clamp-2 mt-1">
-                        {item.description}
-                      </p>
-                      <div className="flex items-center justify-between mt-3">
-                        <span className="text-primary font-bold text-sm md:text-base">
-                          {formatPrice(item.price)}
-                        </span>
-                        <Button
-                          size="sm"
-                          className="h-9 w-9 p-0 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                          onClick={() => handleAddToCart(item)}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                {filteredMenuItems.map((item) => {
+                  const rating = dishRatings.get(item.id) || 0;
+                  return (
+                    <Card
+                      key={item.id}
+                      className="group overflow-hidden rounded-2xl border bg-white shadow-sm hover:shadow-xl transition-all cursor-pointer"
+                      onClick={() => {
+                        setSelectedDish(item);
+                        setShowDishDetail(true);
+                      }}
+                    >
+                      {/* Fixed aspect ratio image container */}
+                      <div className="aspect-square overflow-hidden relative bg-gray-100">
+                        <ImageWithFallback
+                          src={item.image}
+                          alt={item.name}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                        />
+                        {(item.bestSeller || item.isNew) && (
+                          <div className="absolute top-2 left-2 flex flex-col gap-1">
+                            {item.bestSeller && (
+                              <Badge className="bg-amber-500">Best Seller</Badge>
+                            )}
+                            {item.isNew && (
+                              <Badge className="bg-green-500">Mới</Badge>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      <CardContent className="p-3 md:p-4">
+                        <h4 className="font-semibold text-sm md:text-base leading-snug line-clamp-1">
+                          {item.name}
+                        </h4>
+                        <p className="text-xs md:text-sm text-gray-500 line-clamp-2 mt-1">
+                          {item.description}
+                        </p>
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-primary font-bold text-sm md:text-base">
+                              {formatPrice(item.price)}
+                            </span>
+                            {/* Rating display */}
+                            <div className="flex items-center gap-1">
+                              {rating > 0 ? (
+                                <>
+                                  <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                  <span className="text-xs font-medium text-gray-600">
+                                    {rating}
+                                  </span>
+                                </>
+                              ) : (
+                                <Star className="h-3 w-3 text-gray-300" />
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="h-9 w-9 p-0 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddToCart(item);
+                            }}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -925,6 +1011,14 @@ export function CustomerOrderPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dish Detail Dialog */}
+      <DishDetailDialog
+        open={showDishDetail}
+        onOpenChange={setShowDishDetail}
+        item={selectedDish}
+        branchDishId={selectedDish?.id}
+      />
     </div>
   );
 

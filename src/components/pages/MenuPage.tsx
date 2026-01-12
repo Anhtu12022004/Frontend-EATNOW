@@ -118,6 +118,7 @@ export function MenuPage({ branchId, onBack }: MenuPageProps) {
                 <MenuItemCard
                   key={item.id}
                   item={item}
+                  branchDishId={item.id} // item.id is branchDishId when fetched from branch menu
                 />
               ))}
             </div>

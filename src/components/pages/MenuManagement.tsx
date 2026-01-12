@@ -121,11 +121,18 @@ export function MenuManagement({
         };
       });
 
-      // Sort: món trong chi nhánh lên trên, sau đó theo tên
+      // Sort: theo trạng thái (món đang bán lên trên), trong mỗi trạng thái sort theo danh mục, rồi theo tên
       combinedItems.sort((a, b) => {
+        // 1. Sort theo trạng thái: món trong chi nhánh (đang bán) lên trên
         if (a.isInBranch !== b.isInBranch) {
           return a.isInBranch ? -1 : 1;
         }
+        // 2. Trong cùng trạng thái, sort theo danh mục
+        const categoryCompare = a.category.localeCompare(b.category, "vi");
+        if (categoryCompare !== 0) {
+          return categoryCompare;
+        }
+        // 3. Trong cùng danh mục, sort theo tên
         return a.name.localeCompare(b.name, "vi");
       });
 
@@ -296,8 +303,10 @@ export function MenuManagement({
                       <TableCell>
                         <div>
                           <div style={{ fontWeight: 600 }}>{item.name}</div>
-                          <div className="text-sm text-muted-foreground line-clamp-1">
-                            {item.description}
+                          <div className="text-sm text-muted-foreground" title={item.description}>
+                            {item.description && item.description.length > 50
+                              ? `${item.description.substring(0, 50)}...`
+                              : item.description}
                           </div>
                         </div>
                       </TableCell>
