@@ -60,6 +60,7 @@ import { authService } from "../../services/auth";
 import { orderService, OrderDetailResponse } from "../../services/order";
 import { paymentService, CreatePaymentResponse } from "../../services/payment";
 import { DishDetailDialog, RatingStars, calculateAverageRating } from "./DishDetailDialog";
+import { API_BASE_URL } from "../../services/api";
 
 // Interface for dish feedback
 interface DishFeedback {
@@ -178,7 +179,7 @@ export function CustomerOrderPage() {
     const ratingPromises = items.map(async (item) => {
       try {
         const response = await fetch(
-          `http://localhost:5214/api/eatnow/feedbacks/dish/${item.id}`,
+          `${API_BASE_URL}/eatnow/feedbacks/dish/${item.id}`,
           { headers: { 'accept': '*/*' } }
         );
         
@@ -581,7 +582,7 @@ export function CustomerOrderPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="tableNumber" className="text-sm font-medium">
-                  Số bàn
+                  Bàn số
                 </Label>
                 <Input
                   id="tableNumber"

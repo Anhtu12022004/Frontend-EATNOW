@@ -10,6 +10,7 @@ import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
 import { MenuItem, Feedback } from '../../types';
+import { API_BASE_URL } from '../../services/api';
 
 interface DishFeedback {
   id: string;
@@ -120,7 +121,7 @@ export function DishDetailDialog({
       try {
         setLoading(true);
         const response = await fetch(
-          `http://localhost:5214/api/eatnow/feedbacks/dish/${branchDishId}`,
+          `${API_BASE_URL}/eatnow/feedbacks/dish/${branchDishId}`,
           {
             headers: { 'accept': '*/*' }
           }

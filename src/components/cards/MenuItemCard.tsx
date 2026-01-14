@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { MenuItem } from '../../types';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { DishDetailDialog, RatingStars, calculateAverageRating } from '../pages/DishDetailDialog';
+import { API_BASE_URL } from '../../services/api';
 
 interface DishFeedback {
   id: string;
@@ -38,7 +39,7 @@ export function MenuItemCard({ item, branchDishId, onClick }: MenuItemCardProps)
 
       try {
         const response = await fetch(
-          `http://localhost:5214/api/eatnow/feedbacks/dish/${branchDishId}`,
+          `${API_BASE_URL}/eatnow/feedbacks/dish/${branchDishId}`,
           {
             headers: { 'accept': '*/*' }
           }
