@@ -15,9 +15,8 @@ import { AuthPage } from "./components/pages/AuthPage";
 import { ProfilePage } from "./components/pages/ProfilePage";
 import { TableReservationPage } from "./components/pages/TableReservationPage";
 import { ForgotPasswordPage } from "./components/pages/ForgotPasswordPage";
-import { CartSheet } from "./components/cart/CartSheet";
+import { CustomerOrderPage } from "./components/pages/CustomerOrderPage";
 import {
-  CartItem,
   MenuItem,
   UserRole,
   Customer,
@@ -58,6 +57,10 @@ const loadAuthFromStorage = (): { user: Customer | null; role: UserRole } => {
     const stored = localStorage.getItem("eatnow_auth");
     if (stored) {
       const data = JSON.parse(stored);
+      // Convert joinedDate string back to Date object (JSON.parse converts Date to string)
+      if (data.user && data.user.joinedDate) {
+        data.user.joinedDate = new Date(data.user.joinedDate);
+      }
       return { user: data.user, role: data.role || "guest" };
     }
   } catch {
@@ -76,13 +79,33 @@ const saveAuthToStorage = (user: Customer | null, role: UserRole) => {
 };
 
 export default function App() {
+  // Check if current path is /order (for tablet ordering)
+  const isOrderPage = window.location.pathname === "/order";
+
+  // If on /order page, render CustomerOrderPage directly without header/footer
+  if (isOrderPage) {
+    return (
+      <>
+        <CustomerOrderPage />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: "var(--background)",
+              color: "var(--foreground)",
+              border: "1px solid var(--border)",
+            },
+          }}
+        />
+      </>
+    );
+  }
+
   // Load initial state from localStorage
   const initialAuth = loadAuthFromStorage();
 
   const [currentPage, setCurrentPage] = useState<Page>("landing");
   const [selectedBranchId, setSelectedBranchId] = useState<string>("1");
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
   const [lastOrderId, setLastOrderId] = useState<string>("");
   const [userRole, setUserRole] = useState<UserRole>(initialAuth.role);
   const [isLoggedIn, setIsLoggedIn] = useState(!!initialAuth.user);
@@ -96,51 +119,8 @@ export default function App() {
   const [reservations, setReservations] =
     useState<Reservation[]>(mockReservations);
 
-  // Cart functions
-  const addToCart = (item: MenuItem) => {
-    const existingItem = cartItems.find((ci) => ci.id === item.id);
-
-    if (existingItem) {
-      setCartItems(
-        cartItems.map((ci) =>
-          ci.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci
-        )
-      );
-      toast.success("Đã thêm vào giỏ hàng", {
-        description: `${item.name} (${existingItem.quantity + 1})`,
-      });
-    } else {
-      setCartItems([...cartItems, { ...item, quantity: 1 }]);
-      toast.success("Đã thêm vào giỏ hàng", {
-        description: item.name,
-      });
-    }
-    setCartOpen(true);
-  };
-
-  const updateQuantity = (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(itemId);
-      return;
-    }
-    setCartItems(
-      cartItems.map((item) =>
-        item.id === itemId ? { ...item, quantity } : item
-      )
-    );
-  };
-
-  const removeFromCart = (itemId: string) => {
-    setCartItems(cartItems.filter((item) => item.id !== itemId));
-    toast.info("Đã xóa khỏi giỏ hàng");
-  };
-
+  // Checkout functions
   const handleCheckout = () => {
-    if (cartItems.length === 0) {
-      toast.error("Giỏ hàng trống");
-      return;
-    }
-    setCartOpen(false);
     setCurrentPage("checkout");
   };
 
@@ -168,17 +148,21 @@ export default function App() {
   const handleLogin = async (email: string, password: string) => {
     // Validation
     if (!email || !password) {
-      toast.error("Vui lòng nhập email và mật khẩu", {
+      toast.error("Vui lòng nhập email/số điện thoại và mật khẩu", {
         description: "Tất cả các trường bắt buộc",
       });
       return;
     }
 
-    // Validate email format
+    // Validate email or phone format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error("Email không hợp lệ", {
-        description: "Vui lòng nhập email đúng định dạng",
+    const phoneRegex = /^[0-9]{10,}$/;
+    const isEmail = emailRegex.test(email);
+    const isPhone = phoneRegex.test(email.replace(/\D/g, ''));
+    
+    if (!isEmail && !isPhone) {
+      toast.error("Email hoặc số điện thoại không hợp lệ", {
+        description: "Vui lòng nhập email hoặc số điện thoại đúng định dạng",
       });
       return;
     }
@@ -345,7 +329,6 @@ export default function App() {
     setCustomer(null);
     setUserRole("guest");
     setIsLoggedIn(false);
-    setCartItems([]);
     setAdminPage("dashboard");
     saveAuthToStorage(null, "guest");
     setCurrentPage("landing");
@@ -511,24 +494,13 @@ export default function App() {
             onBack={() => setCurrentPage("landing")}
             onUpdate={handleUpdateProfile}
             onLogout={handleLogout}
-            orders={orders}
-            onRatingSubmit={handleRatingSubmit}
           />
         );
 
       case "reservation":
-        if (!customer) {
-          setCurrentPage("auth");
-          toast.error("Vui lòng đăng nhập để đặt bàn");
-          return null;
-        }
         return (
           <TableReservationPage
-            branches={branches}
-            tables={tables}
-            customer={customer}
             onBack={() => setCurrentPage("landing")}
-            onReservationCreate={handleReservationCreate}
           />
         );
 
@@ -540,16 +512,13 @@ export default function App() {
           <MenuPage
             branchId={selectedBranchId}
             onBack={() => setCurrentPage("landing")}
-            onAddToCart={addToCart}
-            onOpenCart={() => setCartOpen(true)}
-            cartCount={cartItems.length}
           />
         );
 
       case "checkout":
         return (
           <CheckoutPage
-            items={cartItems}
+            items={[]}
             onBack={() => setCurrentPage("menu")}
             onConfirm={handleConfirmOrder}
           />
@@ -569,7 +538,6 @@ export default function App() {
         return (
           <LandingPage
             onViewMenu={handleViewMenu}
-            onAddToCart={addToCart}
             onViewBranches={() => setCurrentPage("branches")}
           />
         );
@@ -583,8 +551,6 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       {showHeaderFooter && (
         <Header
-          cartCount={cartItems.length}
-          onCartClick={() => setCartOpen(true)}
           isLoggedIn={isLoggedIn}
           customer={customer || undefined}
           onLogin={() => setCurrentPage("auth")}
@@ -597,16 +563,6 @@ export default function App() {
       <main className="flex-1">{renderContent()}</main>
 
       {showHeaderFooter && <Footer />}
-
-      {/* Cart Sheet */}
-      <CartSheet
-        open={cartOpen}
-        onOpenChange={setCartOpen}
-        items={cartItems}
-        onUpdateQuantity={updateQuantity}
-        onRemoveItem={removeFromCart}
-        onCheckout={handleCheckout}
-      />
 
       <Toaster
         position="top-right"

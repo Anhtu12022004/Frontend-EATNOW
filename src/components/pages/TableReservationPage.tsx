@@ -1,200 +1,239 @@
-import { useState } from 'react';
-import { ArrowLeft, Calendar as CalendarIcon, Clock, Users, MapPin, CreditCard, Check, LayoutGrid, ClockIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Clock, Users, MapPin, Check, Phone, User } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
-import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
+import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
-import { Branch, Table, Reservation, Customer } from '../../types';
+import { Branch } from '../../types';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
+import { branchService } from '../../services/branch';
+import { reservationService, ReservationTableResponse } from '../../services/reservation';
 
 interface TableReservationPageProps {
-  branches: Branch[];
-  tables: Table[];
-  customer: Customer;
   onBack: () => void;
-  onReservationCreate: (reservation: Omit<Reservation, 'id' | 'reservationCode' | 'createdAt'>) => void;
 }
 
-type Step = 'branch' | 'mode' | 'selection' | 'payment' | 'confirmation';
-type ReservationMode = 'by-table' | 'by-time';
+type Step = 'branch' | 'time' | 'table' | 'form' | 'confirmation';
 
-const DEPOSIT_PERCENTAGE = 30;
+// Fixed time slots
+const TIME_SLOTS = [
+  '10:00 - 12:00',
+  '12:00 - 14:00',
+  '14:00 - 16:00',
+  '16:00 - 18:00',
+  '18:00 - 20:00',
+  '20:00 - 22:00',
+];
 
-// Generate 2-hour time slots based on branch hours
-const generateTimeSlots = (hours: string): string[] => {
-  // Parse hours like "10:00 - 22:00"
-  const [start, end] = hours.split(' - ').map(time => {
-    const [h] = time.split(':');
-    return parseInt(h);
-  });
-
-  const slots: string[] = [];
-  for (let hour = start; hour < end; hour += 2) {
-    slots.push(`${hour.toString().padStart(2, '0')}:00 - ${(hour + 2).toString().padStart(2, '0')}:00`);
+// Generate next 7 days starting from tomorrow
+const generateDateOptions = (): { date: Date; label: string }[] => {
+  const options: { date: Date; label: string }[] = [];
+  const today = new Date();
+  
+  for (let i = 1; i <= 7; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    const label = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+    options.push({ date, label });
   }
-  return slots;
+  
+  return options;
 };
 
-export function TableReservationPage({
-  branches,
-  tables,
-  customer,
-  onBack,
-  onReservationCreate
-}: TableReservationPageProps) {
+export function TableReservationPage({ onBack }: TableReservationPageProps) {
   const [step, setStep] = useState<Step>('branch');
-  const [mode, setMode] = useState<ReservationMode | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
-  const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'momo' | 'card' | 'cash'>('momo');
-  const [reservationData, setReservationData] = useState<Omit<Reservation, 'id' | 'reservationCode' | 'createdAt'> | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    // Default to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow;
+  });
+  const [tables, setTables] = useState<ReservationTableResponse[]>([]);
+  const [loadingTables, setLoadingTables] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<ReservationTableResponse | null>(null);
+  
+  // Form fields
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Confirmation data
+  const [reservationId, setReservationId] = useState<string>('');
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND'
-    }).format(amount);
+  const dateOptions = generateDateOptions();
+
+  // Load branches on mount
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        setLoadingBranches(true);
+        const data = await branchService.getAllBranches({ active: true });
+        setBranches(data);
+      } catch (error) {
+        console.error('Error loading branches:', error);
+        toast.error('Không thể tải danh sách chi nhánh');
+      } finally {
+        setLoadingBranches(false);
+      }
+    };
+    
+    fetchBranches();
+  }, []);
+
+  // Build reservation datetime from selected date and time slot
+  const buildReservationDateTime = (date: Date, timeSlot: string): string => {
+    const [startTime] = timeSlot.split(' - ');
+    const [hours, minutes] = startTime.split(':').map(Number);
+    
+    const reservationDate = new Date(date);
+    reservationDate.setHours(hours, minutes, 0, 0);
+    
+    return reservationDate.toISOString();
   };
 
+  // Fetch tables for selected branch, date, and time
+  const fetchTables = async () => {
+    if (!selectedBranch || !selectedTimeSlot) return;
+    
+    try {
+      setLoadingTables(true);
+      const reservationDayTime = buildReservationDateTime(selectedDate, selectedTimeSlot);
+      
+      const data = await reservationService.getTablesForReservation({
+        reservationDayTime,
+        branchId: String(selectedBranch.id)
+      });
+      
+      // Sort by tableNumber
+      const sortedTables = [...data].sort((a, b) => a.tableNumber - b.tableNumber);
+      setTables(sortedTables);
+    } catch (error) {
+      console.error('Error loading tables:', error);
+      toast.error('Không thể tải danh sách bàn');
+    } finally {
+      setLoadingTables(false);
+    }
+  };
+
+  // Handle branch selection
   const handleBranchSelect = (branch: Branch) => {
     setSelectedBranch(branch);
-    setSelectedTable(null);
     setSelectedTimeSlot('');
-    setStep('mode');
+    setSelectedTable(null);
+    setStep('time');
   };
 
-  const handleModeSelect = (selectedMode: ReservationMode) => {
-    setMode(selectedMode);
-    setStep('selection');
+  // Handle time slot selection
+  const handleTimeSlotSelect = (timeSlot: string) => {
+    setSelectedTimeSlot(timeSlot);
+    setSelectedTable(null);
+    setStep('table');
   };
 
-  const handleTableSelect = (table: Table) => {
-    if (table.status !== 'available') {
+  // Fetch tables when entering table step or changing date
+  useEffect(() => {
+    if (step === 'table' && selectedBranch && selectedTimeSlot) {
+      fetchTables();
+    }
+  }, [step, selectedDate, selectedBranch, selectedTimeSlot]);
+
+  // Handle date change
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date);
+    setSelectedTable(null);
+    // Tables will be refetched by the useEffect above
+  };
+
+  // Handle table selection
+  const handleTableSelect = (table: ReservationTableResponse) => {
+    if (table.reservationStatus !== 'AVAILABLE') {
       toast.error('Bàn này đã được đặt. Vui lòng chọn bàn khác.');
       return;
     }
     setSelectedTable(table);
-    
-    // If selecting by table, show time slots next
-    if (mode === 'by-table') {
-      // In the same step, we'll show available time slots
-    }
+    setStep('form');
   };
 
-  const handleTimeSlotSelect = (timeSlot: string) => {
-    setSelectedTimeSlot(timeSlot);
-    
-    // If selecting by time, show available tables next
-    if (mode === 'by-time') {
-      // In the same step, we'll show available tables
-    }
-  };
-
-  const handleConfirmSelection = () => {
-    if (!selectedTable || !selectedTimeSlot) {
-      toast.error('Vui lòng chọn đầy đủ bàn và khung giờ');
-      return;
-    }
-    setStep('payment');
-  };
-
-  const calculateDeposit = () => {
-    if (!selectedTable) return 0;
-    return Math.round((selectedTable.seats * 50000) * (DEPOSIT_PERCENTAGE / 100));
-  };
-
-  const handlePaymentConfirm = () => {
-    if (!selectedBranch || !selectedTable || !selectedTimeSlot || !paymentMethod) {
+  // Handle form submission
+  const handleSubmitReservation = async () => {
+    if (!selectedBranch || !selectedTable || !selectedTimeSlot) {
       toast.error('Vui lòng hoàn tất thông tin đặt bàn');
       return;
     }
 
-    // Extract date and time from time slot
-    const today = new Date();
-    const [startTime] = selectedTimeSlot.split(' - ');
-    
-    const reservation: Omit<Reservation, 'id' | 'reservationCode' | 'createdAt'> = {
-      customerId: customer.id,
-      customerName: customer.name,
-      customerEmail: customer.email,
-      customerPhone: customer.phone,
-      branchId: selectedBranch.id,
-      branchName: selectedBranch.name,
-      tableId: selectedTable.id,
-      tableNumber: selectedTable.number,
-      date: today,
-      time: startTime,
-      seats: selectedTable.seats,
-      status: 'confirmed',
-      depositAmount: calculateDeposit(),
-      depositPaid: true,
-      paymentMethod,
-      notes: notes || undefined
-    };
+    if (!phoneNumber.trim()) {
+      toast.error('Vui lòng nhập số điện thoại');
+      return;
+    }
 
-    setReservationData(reservation);
-    
-    // Simulate payment processing
-    setTimeout(() => {
-      onReservationCreate(reservation);
+    if (!fullName.trim()) {
+      toast.error('Vui lòng nhập họ tên');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      const reservationTime = buildReservationDateTime(selectedDate, selectedTimeSlot);
+      
+      const response = await reservationService.createPublicReservation({
+        phoneNumber: phoneNumber.trim(),
+        fullName: fullName.trim(),
+        reservationTime,
+        numberOfPeople: selectedTable.capacity,
+        branchId: String(selectedBranch.id),
+        tableNumber: selectedTable.tableNumber
+      });
+
+      setReservationId(response.reservationId);
       setStep('confirmation');
       toast.success('Đặt bàn thành công!');
-    }, 1500);
+    } catch (error) {
+      console.error('Error creating reservation:', error);
+      toast.error('Không thể đặt bàn. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  // Reset and start new reservation
   const handleNewReservation = () => {
     setStep('branch');
-    setMode(null);
     setSelectedBranch(null);
-    setSelectedTable(null);
     setSelectedTimeSlot('');
-    setNotes('');
-    setPaymentMethod('momo');
-    setReservationData(null);
+    setSelectedDate(() => {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow;
+    });
+    setTables([]);
+    setSelectedTable(null);
+    setPhoneNumber('');
+    setFullName('');
+    setReservationId('');
   };
 
-  const getTableStatusBadge = (status: Table['status']) => {
-    const variants: Record<Table['status'], { variant: 'default' | 'secondary' | 'destructive'; label: string }> = {
-      available: { variant: 'default', label: 'Trống' },
-      occupied: { variant: 'secondary', label: 'Đang sử dụng' },
-      reserved: { variant: 'destructive', label: 'Đã đặt' }
-    };
-    const { variant, label } = variants[status];
-    return <Badge variant={variant}>{label}</Badge>;
+  // Format date for display
+  const formatDateDisplay = (date: Date): string => {
+    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
   };
 
-  const getAreaLabel = (area: Table['area']) => {
-    const labels: Record<Table['area'], string> = {
-      indoor: 'Trong nhà',
-      outdoor: 'Ngoài trời',
-      vip: 'VIP'
-    };
-    return labels[area];
-  };
-
-  const branchTables = tables.filter(t => t.branchId === selectedBranch?.id);
-  const timeSlots = selectedBranch ? generateTimeSlots(selectedBranch.hours) : [];
-  
-  // Mock available time slots for selected table (in real app, check reservations)
-  const availableTimeSlotsForTable = timeSlots;
-  
-  // Mock available tables for selected time slot (in real app, check reservations)
-  const availableTablesForTimeSlot = branchTables.filter(t => t.status === 'available');
-
+  // Get step number for progress indicator
   const getStepNumber = () => {
-    const steps = ['branch', 'mode', 'selection', 'payment', 'confirmation'];
+    const steps: Step[] = ['branch', 'time', 'table', 'form', 'confirmation'];
     return steps.indexOf(step) + 1;
   };
 
   return (
     <div className="min-h-screen bg-muted/30 py-8">
-      <div className="container mx-auto px-4 max-w-6xl">
+      <div className="container mx-auto px-4 max-w-4xl">
         <Button variant="ghost" onClick={onBack} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Quay lại
@@ -235,83 +274,88 @@ export function TableReservationPage({
                 <CardDescription>Chọn chi nhánh bạn muốn đặt bàn</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {branches.map((branch) => (
-                    <Card
-                      key={branch.id}
-                      className="cursor-pointer hover:border-primary transition-colors"
-                      onClick={() => handleBranchSelect(branch)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          <img
-                            src={branch.image}
-                            alt={branch.name}
-                            className="w-20 h-20 rounded-lg object-cover"
-                          />
-                          <div className="flex-1">
-                            <h3 className="mb-1">{branch.name}</h3>
-                            <p className="text-sm text-muted-foreground mb-2">
-                              <MapPin className="h-3 w-3 inline mr-1" />
-                              {branch.address}
-                            </p>
-                            <div className="flex items-center gap-2 text-sm">
-                              <Clock className="h-3 w-3" />
-                              <span>{branch.hours}</span>
+                {loadingBranches ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : branches.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    Không có chi nhánh nào
+                  </div>
+                ) : (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {branches.map((branch) => (
+                      <Card
+                        key={branch.id}
+                        className="cursor-pointer hover:border-primary transition-colors"
+                        onClick={() => handleBranchSelect(branch)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-4">
+                            {branch.image && (
+                              <img
+                                src={branch.image}
+                                alt={branch.name}
+                                className="w-20 h-20 rounded-lg object-cover"
+                              />
+                            )}
+                            <div className="flex-1">
+                              <h3 className="font-medium mb-1">{branch.name}</h3>
+                              <p className="text-sm text-muted-foreground mb-2">
+                                <MapPin className="h-3 w-3 inline mr-1" />
+                                {branch.address}
+                              </p>
+                              {branch.hours && (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Clock className="h-3 w-3" />
+                                  <span>{branch.hours}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* Step 2: Select Mode */}
-        {step === 'mode' && selectedBranch && (
+        {/* Step 2: Select Time Slot */}
+        {step === 'time' && selectedBranch && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Chọn phương thức đặt bàn</CardTitle>
-                <CardDescription>Bạn muốn đặt bàn theo cách nào?</CardDescription>
+                <CardTitle>Chọn khung giờ</CardTitle>
+                <CardDescription>
+                  Chi nhánh: {selectedBranch.name}
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Card
-                    className="cursor-pointer hover:border-primary transition-all hover:shadow-md"
-                    onClick={() => handleModeSelect('by-table')}
-                  >
-                    <CardContent className="p-6 text-center">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-                        <LayoutGrid className="h-8 w-8" />
-                      </div>
-                      <h3 className="mb-2">Đặt theo bàn</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Xem sơ đồ bàn, chọn vị trí ưa thích, sau đó chọn khung giờ phù hợp
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card
-                    className="cursor-pointer hover:border-primary transition-all hover:shadow-md"
-                    onClick={() => handleModeSelect('by-time')}
-                  >
-                    <CardContent className="p-6 text-center">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-                        <ClockIcon className="h-8 w-8" />
-                      </div>
-                      <h3 className="mb-2">Đặt theo khung giờ</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Chọn khung giờ mong muốn, sau đó xem các bàn còn trống
-                      </p>
-                    </CardContent>
-                  </Card>
+              <CardContent className="space-y-6">
+                <div>
+                  <Label className="mb-3 block">Các khung giờ có sẵn</Label>
+                  <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {TIME_SLOTS.map((timeSlot) => (
+                      <Card
+                        key={timeSlot}
+                        className={cn(
+                          'cursor-pointer hover:border-primary transition-all hover:shadow-md',
+                          selectedTimeSlot === timeSlot && 'border-primary ring-2 ring-primary/20'
+                        )}
+                        onClick={() => handleTimeSlotSelect(timeSlot)}
+                      >
+                        <CardContent className="p-4 text-center">
+                          <Clock className="h-6 w-6 mx-auto mb-2 text-primary" />
+                          <div className="font-medium">{timeSlot}</div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="flex justify-between mt-6">
+                <div className="flex justify-between">
                   <Button variant="outline" onClick={() => setStep('branch')}>
                     Quay lại
                   </Button>
@@ -321,293 +365,169 @@ export function TableReservationPage({
           </div>
         )}
 
-        {/* Step 3: Selection (By Table) */}
-        {step === 'selection' && mode === 'by-table' && (
+        {/* Step 3: Select Table */}
+        {step === 'table' && selectedBranch && selectedTimeSlot && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>{selectedBranch?.name}</CardTitle>
+                <CardTitle>Chọn bàn</CardTitle>
                 <CardDescription>
-                  {!selectedTable ? 'Chọn bàn từ sơ đồ nhà hàng' : 'Chọn khung giờ phù hợp'}
+                  {selectedBranch.name} - Khung giờ {selectedTimeSlot}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {!selectedTable ? (
-                  <>
-                    {/* Table Layout by Area */}
-                    {['indoor', 'outdoor', 'vip'].map((area) => {
-                      const areaTables = branchTables.filter(t => t.area === area);
-                      if (areaTables.length === 0) return null;
-
-                      return (
-                        <div key={area}>
-                          <h4 className="mb-3">{getAreaLabel(area as Table['area'])}</h4>
-                          <div className="grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                            {areaTables.map((table) => (
-                              <Card
-                                key={table.id}
-                                className={cn(
-                                  'cursor-pointer transition-all',
-                                  table.status === 'available' ? 'hover:border-primary hover:shadow-md' : 'opacity-50 cursor-not-allowed',
-                                  selectedTable?.id === table.id && 'border-primary ring-2 ring-primary/20'
-                                )}
-                                onClick={() => handleTableSelect(table)}
-                              >
-                                <CardContent className="p-4 text-center">
-                                  <div className="text-2xl mb-2">Bàn {table.number}</div>
-                                  <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground mb-2">
-                                    <Users className="h-4 w-4" />
-                                    <span>{table.seats} chỗ</span>
-                                  </div>
-                                  {getTableStatusBadge(table.status)}
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    <div className="flex justify-between">
-                      <Button variant="outline" onClick={() => setStep('mode')}>
-                        Quay lại
+                {/* Date Selection */}
+                <div>
+                  <Label className="mb-3 block">Chọn ngày</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {dateOptions.map((option, index) => (
+                      <Button
+                        key={index}
+                        variant={selectedDate.getDate() === option.date.getDate() && 
+                                 selectedDate.getMonth() === option.date.getMonth() 
+                                 ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => handleDateChange(option.date)}
+                      >
+                        {option.label}
                       </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* Selected Table Info */}
-                    <div className="bg-muted/50 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Bàn đã chọn</p>
-                          <p className="text-lg">Bàn {selectedTable.number} - {getAreaLabel(selectedTable.area)} ({selectedTable.seats} chỗ)</p>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => setSelectedTable(null)}>
-                          Đổi bàn
-                        </Button>
-                      </div>
-                    </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Ngày đã chọn: {formatDateDisplay(selectedDate)}
+                  </p>
+                </div>
 
-                    {/* Available Time Slots */}
-                    <div>
-                      <Label className="mb-3 block">Chọn khung giờ</Label>
-                      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {availableTimeSlotsForTable.map((timeSlot) => (
-                          <Card
-                            key={timeSlot}
-                            className={cn(
-                              'cursor-pointer hover:border-primary transition-all hover:shadow-md',
-                              selectedTimeSlot === timeSlot && 'border-primary ring-2 ring-primary/20'
-                            )}
-                            onClick={() => setSelectedTimeSlot(timeSlot)}
-                          >
-                            <CardContent className="p-4 text-center">
-                              <Clock className="h-6 w-6 mx-auto mb-2 text-primary" />
-                              <div>{timeSlot}</div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </div>
+                <Separator />
 
-                    <div className="flex justify-between">
-                      <Button variant="outline" onClick={() => setSelectedTable(null)}>
-                        Quay lại
-                      </Button>
-                      <Button onClick={handleConfirmSelection} disabled={!selectedTimeSlot}>
-                        Tiếp tục
-                      </Button>
+                {/* Tables Grid */}
+                <div>
+                  <Label className="mb-3 block">Danh sách bàn</Label>
+                  {loadingTables ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                     </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Step 3: Selection (By Time) */}
-        {step === 'selection' && mode === 'by-time' && (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>{selectedBranch?.name}</CardTitle>
-                <CardDescription>
-                  {!selectedTimeSlot ? 'Chọn khung giờ mong muốn' : 'Chọn bàn còn trống'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {!selectedTimeSlot ? (
-                  <>
-                    {/* Time Slots */}
-                    <div>
-                      <Label className="mb-3 block">Các khung giờ có sẵn</Label>
-                      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {timeSlots.map((timeSlot) => (
-                          <Card
-                            key={timeSlot}
-                            className={cn(
-                              'cursor-pointer hover:border-primary transition-all hover:shadow-md',
-                              selectedTimeSlot === timeSlot && 'border-primary ring-2 ring-primary/20'
-                            )}
-                            onClick={() => handleTimeSlotSelect(timeSlot)}
-                          >
-                            <CardContent className="p-4 text-center">
-                              <Clock className="h-6 w-6 mx-auto mb-2 text-primary" />
-                              <div>{timeSlot}</div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
+                  ) : tables.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      Không có bàn nào trong khung giờ này
                     </div>
-
-                    <div className="flex justify-between">
-                      <Button variant="outline" onClick={() => setStep('mode')}>
-                        Quay lại
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* Selected Time Slot Info */}
-                    <div className="bg-muted/50 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Khung giờ đã chọn</p>
-                          <p className="text-lg">{selectedTimeSlot}</p>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => setSelectedTimeSlot('')}>
-                          Đổi giờ
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Available Tables */}
-                    <div>
-                      <Label className="mb-3 block">Bàn còn trống trong khung giờ này</Label>
-                      {['indoor', 'outdoor', 'vip'].map((area) => {
-                        const areaTables = availableTablesForTimeSlot.filter(t => t.area === area);
-                        if (areaTables.length === 0) return null;
-
-                        return (
-                          <div key={area} className="mb-4">
-                            <h4 className="text-sm mb-2">{getAreaLabel(area as Table['area'])}</h4>
-                            <div className="grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                              {areaTables.map((table) => (
-                                <Card
-                                  key={table.id}
-                                  className={cn(
-                                    'cursor-pointer hover:border-primary transition-all hover:shadow-md',
-                                    selectedTable?.id === table.id && 'border-primary ring-2 ring-primary/20'
-                                  )}
-                                  onClick={() => setSelectedTable(table)}
-                                >
-                                  <CardContent className="p-4 text-center">
-                                    <div className="text-2xl mb-2">Bàn {table.number}</div>
-                                    <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground mb-2">
-                                      <Users className="h-4 w-4" />
-                                      <span>{table.seats} chỗ</span>
-                                    </div>
-                                    {getTableStatusBadge(table.status)}
-                                  </CardContent>
-                                </Card>
-                              ))}
+                  ) : (
+                    <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {tables.map((table) => (
+                        <Card
+                          key={table.id}
+                          className={cn(
+                            'cursor-pointer transition-all',
+                            table.reservationStatus === 'AVAILABLE' 
+                              ? 'hover:border-primary hover:shadow-md' 
+                              : 'opacity-60 cursor-not-allowed',
+                            selectedTable?.id === table.id && 'border-primary ring-2 ring-primary/20'
+                          )}
+                          onClick={() => handleTableSelect(table)}
+                        >
+                          <CardContent className="p-4 text-center">
+                            <div className="text-xl font-bold mb-2">Bàn {table.tableNumber}</div>
+                            <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground mb-2">
+                              <Users className="h-4 w-4" />
+                              <span>{table.capacity} chỗ</span>
                             </div>
-                          </div>
-                        );
-                      })}
+                            <Badge 
+                              variant={table.reservationStatus === 'AVAILABLE' ? 'default' : 'destructive'}
+                            >
+                              {table.reservationStatus === 'AVAILABLE' ? 'Trống' : 'Đã đặt'}
+                            </Badge>
+                          </CardContent>
+                        </Card>
+                      ))}
                     </div>
-
-                    <div className="flex justify-between">
-                      <Button variant="outline" onClick={() => setSelectedTimeSlot('')}>
-                        Quay lại
-                      </Button>
-                      <Button onClick={handleConfirmSelection} disabled={!selectedTable}>
-                        Tiếp tục
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Step 4: Payment */}
-        {step === 'payment' && selectedTable && selectedTimeSlot && (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Thanh toán đặt cọc</CardTitle>
-                <CardDescription>
-                  Thanh toán {DEPOSIT_PERCENTAGE}% giá trị đặt bàn để xác nhận
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Chi nhánh</span>
-                    <span>{selectedBranch?.name}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Bàn số</span>
-                    <span>{selectedTable.number} ({selectedTable.seats} chỗ)</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Khung giờ</span>
-                    <span>{selectedTimeSlot}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between">
-                    <span>Tiền đặt cọc ({DEPOSIT_PERCENTAGE}%)</span>
-                    <span className="text-primary">{formatCurrency(calculateDeposit())}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Ghi chú (tùy chọn)</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="VD: Sinh nhật, cần trang trí bàn..."
-                    rows={3}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Phương thức thanh toán</Label>
-                  <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as any)}>
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
-                      <RadioGroupItem value="momo" id="momo" />
-                      <Label htmlFor="momo" className="flex items-center gap-2 cursor-pointer flex-1">
-                        <CreditCard className="h-4 w-4" />
-                        <span>Ví MoMo</span>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
-                      <RadioGroupItem value="card" id="card" />
-                      <Label htmlFor="card" className="flex items-center gap-2 cursor-pointer flex-1">
-                        <CreditCard className="h-4 w-4" />
-                        <span>Thẻ tín dụng/ghi nợ</span>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
-                      <RadioGroupItem value="cash" id="cash" />
-                      <Label htmlFor="cash" className="flex items-center gap-2 cursor-pointer flex-1">
-                        <CreditCard className="h-4 w-4" />
-                        <span>Tiền mặt tại nhà hàng</span>
-                      </Label>
-                    </div>
-                  </RadioGroup>
+                  )}
                 </div>
 
                 <div className="flex justify-between">
-                  <Button variant="outline" onClick={() => setStep('selection')}>
+                  <Button variant="outline" onClick={() => setStep('time')}>
                     Quay lại
                   </Button>
-                  <Button onClick={handlePaymentConfirm}>
-                    Xác nhận thanh toán
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Step 4: Customer Form */}
+        {step === 'form' && selectedBranch && selectedTable && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Thông tin đặt bàn</CardTitle>
+                <CardDescription>Vui lòng điền thông tin để hoàn tất đặt bàn</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Reservation Summary */}
+                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Chi nhánh</span>
+                    <span className="font-medium">{selectedBranch.name}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Ngày</span>
+                    <span className="font-medium">{formatDateDisplay(selectedDate)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Khung giờ</span>
+                    <span className="font-medium">{selectedTimeSlot}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Bàn số</span>
+                    <span className="font-medium">{selectedTable.tableNumber}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Số chỗ</span>
+                    <span className="font-medium">{selectedTable.capacity} người</span>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Customer Info Form */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="fullName">Họ và tên</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="fullName"
+                        placeholder="Nhập họ và tên"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="phoneNumber">Số điện thoại</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="phoneNumber"
+                        placeholder="Nhập số điện thoại"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={() => setStep('table')}>
+                    Quay lại
+                  </Button>
+                  <Button 
+                    onClick={handleSubmitReservation} 
+                    disabled={isSubmitting || !fullName.trim() || !phoneNumber.trim()}
+                  >
+                    {isSubmitting ? 'Đang xử lý...' : 'Xác nhận đặt bàn'}
                   </Button>
                 </div>
               </CardContent>
@@ -616,7 +536,7 @@ export function TableReservationPage({
         )}
 
         {/* Step 5: Confirmation */}
-        {step === 'confirmation' && reservationData && (
+        {step === 'confirmation' && selectedBranch && selectedTable && (
           <div className="space-y-6">
             <Card>
               <CardContent className="pt-6">
@@ -624,58 +544,49 @@ export function TableReservationPage({
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 text-green-600 mb-4">
                     <Check className="h-8 w-8" />
                   </div>
-                  <h2 className="mb-2">Đặt bàn thành công!</h2>
+                  <h2 className="text-2xl font-bold mb-2">Đặt bàn thành công!</h2>
                   <p className="text-muted-foreground">
-                    Mã đặt bàn của bạn đã được gửi qua email
+                    Cảm ơn bạn đã đặt bàn tại nhà hàng của chúng tôi
                   </p>
                 </div>
 
                 <div className="bg-muted/50 rounded-lg p-6 space-y-4 max-w-md mx-auto">
                   <div className="text-center pb-4 border-b">
                     <p className="text-sm text-muted-foreground mb-1">Mã đặt bàn</p>
-                    <p className="text-2xl tracking-wider">
-                      {`EAT${Date.now().toString().slice(-9)}`}
+                    <p className="text-2xl font-mono font-bold tracking-wider">
+                      {reservationId.slice(0, 8).toUpperCase()}
                     </p>
                   </div>
 
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Khách hàng</span>
-                      <span>{reservationData.customerName}</span>
+                      <span className="font-medium">{fullName}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Số điện thoại</span>
-                      <span>{reservationData.customerPhone}</span>
+                      <span className="font-medium">{phoneNumber}</span>
                     </div>
                     <Separator />
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Chi nhánh</span>
-                      <span>{reservationData.branchName}</span>
+                      <span className="font-medium">{selectedBranch.name}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Bàn số</span>
-                      <span>{reservationData.tableNumber}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Số chỗ</span>
-                      <span>{reservationData.seats} người</span>
+                      <span className="text-muted-foreground">Ngày</span>
+                      <span className="font-medium">{formatDateDisplay(selectedDate)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Khung giờ</span>
-                      <span>{selectedTimeSlot}</span>
+                      <span className="font-medium">{selectedTimeSlot}</span>
                     </div>
-                    {reservationData.notes && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Ghi chú</span>
-                        <span>{reservationData.notes}</span>
-                      </div>
-                    )}
-                    <Separator />
-                    <div className="flex justify-between">
-                      <span>Đã thanh toán</span>
-                      <span className="text-primary">
-                        {formatCurrency(reservationData.depositAmount)}
-                      </span>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Bàn số</span>
+                      <span className="font-medium">{selectedTable.tableNumber}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Số chỗ</span>
+                      <span className="font-medium">{selectedTable.capacity} người</span>
                     </div>
                   </div>
                 </div>

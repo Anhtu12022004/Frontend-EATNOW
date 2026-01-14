@@ -21,6 +21,25 @@ interface CreatePaymentRequest {
   payment_method: string; // 'CASH', 'MOMO', 'CARD', 'TRANSFER'
 }
 
+/**
+ * Interface cho request tạo payment mới (API mới)
+ */
+interface CreateCustomerPaymentRequest {
+  orderId: string;
+  paymentMethod: string; // 'Tiền mặt', 'Ngân hàng', 'Momo'
+}
+
+/**
+ * Interface cho response tạo payment
+ */
+interface CreatePaymentResponse {
+  id: string;
+  amount: number;
+  paymentMethod: string;
+  status: string;
+  orderId: string;
+}
+
 class PaymentService {
   /**
    * Tạo thanh toán cho đơn hàng
@@ -168,6 +187,24 @@ class PaymentService {
       throw new Error(apiError.message || 'Không thể tải danh sách thanh toán');
     }
   }
+
+  /**
+   * Tạo thanh toán từ tablet khách hàng tại quán
+   * POST /api/eatnow/payment
+   * @param data Thông tin thanh toán (orderId, paymentMethod)
+   * @returns Thông tin thanh toán vừa tạo
+   */
+  async createCustomerPayment(data: CreateCustomerPaymentRequest): Promise<CreatePaymentResponse> {
+    try {
+      const response = await apiClient.post<CreatePaymentResponse>('/eatnow/payment', data);
+      return response.data;
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error creating customer payment:', apiError);
+      throw new Error(apiError.message || 'Không thể tạo thanh toán');
+    }
+  }
 }
 
 export const paymentService = new PaymentService();
+export type { CreateCustomerPaymentRequest, CreatePaymentResponse };

@@ -2,6 +2,45 @@ import { apiClient, ApiError } from './api';
 import { Reservation, ReservationApiResponse, Table, TableApiResponse } from '../types';
 
 /**
+ * Interface cho request lấy danh sách bàn theo thời gian
+ */
+interface GetTablesForReservationRequest {
+  reservationDayTime: string; // ISO datetime
+  branchId: string;
+}
+
+/**
+ * Interface cho response bàn từ API reservation/tables
+ */
+interface ReservationTableResponse {
+  id: string;
+  tableNumber: number;
+  capacity: number;
+  reservationStatus: 'AVAILABLE' | 'RESERVED';
+  branchId: string;
+}
+
+/**
+ * Interface cho request tạo đặt bàn mới
+ */
+interface CreatePublicReservationRequest {
+  phoneNumber: string;
+  fullName: string;
+  reservationTime: string; // ISO datetime
+  numberOfPeople: number;
+  branchId: string;
+  tableNumber: number;
+}
+
+/**
+ * Interface cho response tạo đặt bàn
+ */
+interface CreatePublicReservationResponse {
+  reservationId: string;
+  status: string;
+}
+
+/**
  * Chuyển đổi Reservation response từ backend sang format frontend
  */
 function mapReservationResponse(apiResponse: ReservationApiResponse): Reservation {
@@ -242,6 +281,45 @@ class ReservationService {
       throw new Error(apiError.message || 'Không thể xóa bàn');
     }
   }
+
+  // ============ PUBLIC RESERVATION (Không cần đăng nhập) ============
+
+  /**
+   * Lấy danh sách bàn theo thời gian đặt (Public API)
+   * POST /api/eatnow/reservation/tables
+   */
+  async getTablesForReservation(data: GetTablesForReservationRequest): Promise<ReservationTableResponse[]> {
+    try {
+      const response = await apiClient.post<ReservationTableResponse[]>(
+        '/eatnow/reservation/tables',
+        data
+      );
+      return response.data;
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error fetching tables for reservation:', apiError);
+      throw new Error(apiError.message || 'Không thể tải danh sách bàn');
+    }
+  }
+
+  /**
+   * Tạo đặt bàn công khai (không cần đăng nhập)
+   * POST /api/eatnow/reservation
+   */
+  async createPublicReservation(data: CreatePublicReservationRequest): Promise<CreatePublicReservationResponse> {
+    try {
+      const response = await apiClient.post<CreatePublicReservationResponse>(
+        '/eatnow/reservation',
+        data
+      );
+      return response.data;
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error creating public reservation:', apiError);
+      throw new Error(apiError.message || 'Không thể đặt bàn');
+    }
+  }
 }
 
 export const reservationService = new ReservationService();
+export type { ReservationTableResponse, CreatePublicReservationRequest, CreatePublicReservationResponse };

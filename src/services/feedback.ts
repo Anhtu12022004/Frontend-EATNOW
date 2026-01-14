@@ -134,6 +134,23 @@ class FeedbackService {
   }
 
   /**
+   * Lấy đánh giá của món ăn theo branchDishId (API mới)
+   */
+  async getFeedbackByBranchDish(branchDishId: string): Promise<Feedback[]> {
+    try {
+      const response = await apiClient.get<FeedbackApiResponse[]>(
+        `/eatnow/feedbacks/dish/${branchDishId}`
+      );
+      return response.data.map(mapFeedbackResponse);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Error fetching branch dish feedback:', apiError);
+      // Return empty array instead of throwing error for no feedback
+      return [];
+    }
+  }
+
+  /**
    * Ẩn/hiện đánh giá (Admin)
    */
   async toggleFeedbackVisibility(feedbackId: string, isVisible: boolean): Promise<Feedback> {

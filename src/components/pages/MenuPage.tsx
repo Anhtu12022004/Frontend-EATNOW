@@ -1,23 +1,19 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ShoppingCart, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { MenuItemCard } from '../cards/MenuItemCard';
 import { menuItems as mockMenuItems } from '../../data/mockData';
 import { MenuItem, Branch } from '../../types';
-import { Badge } from '../ui/badge';
 import { menuService } from '../../services/menu';
 import { branchService } from '../../services/branch';
 
 interface MenuPageProps {
   branchId: string;
   onBack: () => void;
-  onAddToCart: (item: MenuItem) => void;
-  onOpenCart: () => void;
-  cartCount: number;
 }
 
-export function MenuPage({ branchId, onBack, onAddToCart, onOpenCart, cartCount }: MenuPageProps) {
+export function MenuPage({ branchId, onBack }: MenuPageProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [branch, setBranch] = useState<Branch | null>(null);
@@ -68,22 +64,6 @@ export function MenuPage({ branchId, onBack, onAddToCart, onOpenCart, cartCount 
             <Button variant="ghost" onClick={onBack}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Quay lại
-            </Button>
-            <Button 
-              variant="outline" 
-              className="relative"
-              onClick={onOpenCart}
-            >
-              <ShoppingCart className="h-4 w-4 mr-2" />
-              Giỏ hàng
-              {cartCount > 0 && (
-                <Badge 
-                  className="ml-2 h-5 px-2"
-                  style={{ fontSize: '12px' }}
-                >
-                  {cartCount}
-                </Badge>
-              )}
             </Button>
           </div>
 
@@ -138,7 +118,7 @@ export function MenuPage({ branchId, onBack, onAddToCart, onOpenCart, cartCount 
                 <MenuItemCard
                   key={item.id}
                   item={item}
-                  onAddToCart={onAddToCart}
+                  branchDishId={item.id} // item.id is branchDishId when fetched from branch menu
                 />
               ))}
             </div>
@@ -154,19 +134,6 @@ export function MenuPage({ branchId, onBack, onAddToCart, onOpenCart, cartCount 
         )}
       </div>
 
-      {/* Mobile Cart Button */}
-      {cartCount > 0 && (
-        <div className="fixed bottom-4 right-4 left-4 md:hidden">
-          <Button 
-            className="w-full bg-primary hover:bg-primary/90 shadow-lg"
-            size="lg"
-            onClick={onOpenCart}
-          >
-            <ShoppingCart className="h-5 w-5 mr-2" />
-            Xem giỏ hàng ({cartCount})
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

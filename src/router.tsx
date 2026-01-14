@@ -20,6 +20,7 @@ import { AdminDashboard } from "./components/pages/AdminDashboard";
 import { SuperAdminDashboard } from "./components/pages/SuperAdminDashboard";
 import { MenuManagement } from "./components/pages/MenuManagement";
 import { StaffManagement } from "./components/pages/StaffManagement";
+import { CustomerOrderPage } from "./components/pages/CustomerOrderPage";
 import { useAuth } from "./contexts/AuthContext";
 import { useCart } from "./hooks/useCart";
 import { CartSheet } from "./components/cart/CartSheet";
@@ -233,32 +234,14 @@ function ProfilePageWrapper() {
         logout();
         window.location.href = "/";
       }}
-      orders={mockOrders.filter((o) => o.customerId === user.id)}
-      onRatingSubmit={(rating) => {
-        toast.success("Cảm ơn bạn đã đánh giá!");
-      }}
     />
   );
 }
 
 function TableReservationPageWrapper() {
-  const { user } = useAuth();
-
-  if (!user) {
-    toast.error("Vui lòng đăng nhập để đặt bàn");
-    return <Navigate to="/auth" replace />;
-  }
-
   return (
     <TableReservationPage
-      branches={branches}
-      tables={mockTables}
-      customer={user}
       onBack={() => window.history.back()}
-      onReservationCreate={(reservation) => {
-        toast.success("Đặt bàn thành công!");
-        window.location.href = "/profile";
-      }}
     />
   );
 }
@@ -349,6 +332,10 @@ export const router = createBrowserRouter([
   {
     path: "/forgot-password",
     element: <ForgotPasswordPageWrapper />,
+  },
+  {
+    path: "/order",
+    element: <CustomerOrderPage />,
   },
   {
     path: "/staff",

@@ -58,6 +58,49 @@ interface RegisterResponse {
   email: string; // Trả về email để tự động điền vào form login
 }
 
+/**
+ * Interface cho request đăng nhập khách hàng tại quán
+ */
+interface CustomerLoginRequest {
+  phone: string;
+  fullName: string;
+  branchId: string;
+  tableNumber: number;
+}
+
+/**
+ * Interface cho response đăng nhập khách hàng
+ */
+interface CustomerLoginApiResponse {
+  token: string;
+  data: {
+    id: string;
+    fullName: string;
+    phone: string;
+    status: string;
+    createdAt: string;
+    role: string;
+    branchId: string;
+    tableId: string;
+    tableNumber: number;
+  };
+  message: string;
+  success: boolean;
+}
+
+/**
+ * Interface cho response đăng nhập khách hàng (frontend)
+ */
+export interface CustomerLoginResponse {
+  token: string;
+  userId: string;
+  fullName: string;
+  phone: string;
+  branchId: string;
+  tableId: string;
+  tableNumber: number;
+}
+
 class AuthService {
   /**
    * Map role string từ backend sang UserRole
@@ -251,6 +294,50 @@ class AuthService {
    */
   isAuthenticated(): boolean {
     return !!this.getStoredToken();
+  }
+
+  /**
+   * Đăng nhập khách hàng tại quán (dùng cho tablet đặt món)
+   * POST /api/auth/customer/login
+   * @param data Thông tin khách hàng (phone, fullName, branchId, tableNumber)
+   * @returns Token và thông tin khách hàng
+   */
+  async customerLogin(data: CustomerLoginRequest): Promise<CustomerLoginResponse> {
+    try {
+      const response = await apiClient.post<CustomerLoginApiResponse["data"]>(
+        "/auth/customer/login",
+        data
+      );
+      console.log("Customer login response:", response);
+
+      if (!response.success) {
+        throw new Error(response.message || "Đăng nhập thất bại");
+      }
+
+      const token = (response as any).token;
+      const userData = response.data;
+
+      if (!token) {
+        throw new Error("Token không được trả về từ server");
+      }
+
+      // Lưu token vào localStorage và set Authorization header
+      apiClient.setToken(token);
+
+      return {
+        token,
+        userId: userData.id,
+        fullName: userData.fullName,
+        phone: userData.phone,
+        branchId: userData.branchId,
+        tableId: userData.tableId,
+        tableNumber: userData.tableNumber,
+      };
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error("Customer login error:", apiError);
+      throw new Error(apiError.message || "Đăng nhập khách hàng thất bại");
+    }
   }
 }
 

@@ -10,11 +10,10 @@ import { menuService } from '../../services/menu';
 
 interface LandingPageProps {
   onViewMenu: (branchId: string) => void;
-  onAddToCart: (item: MenuItem) => void;
   onViewBranches: () => void;
 }
 
-export function LandingPage({ onViewMenu, onAddToCart, onViewBranches }: LandingPageProps) {
+export function LandingPage({ onViewMenu, onViewBranches }: LandingPageProps) {
   // State cho chi nhánh
   const [nearbyBranches, setNearbyBranches] = useState<Branch[]>([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(true);
@@ -236,7 +235,6 @@ export function LandingPage({ onViewMenu, onAddToCart, onViewBranches }: Landing
                 <MenuItemCard 
                   key={item.id} 
                   item={item}
-                  onAddToCart={onAddToCart}
                 />
               ))}
             </div>

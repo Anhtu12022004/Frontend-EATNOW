@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { Customer, UserRole } from '../types';
-import { authService, LoginRequest, RegisterRequest } from '../services';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useState, useCallback } from "react";
+import { Customer, UserRole } from "../types";
+import { apiClient } from "../services/api";
+import { toast } from "sonner";
 
 interface AuthState {
   user: Customer | null;
@@ -12,7 +12,12 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, phone: string, password: string) => Promise<boolean>;
+  register: (
+    name: string,
+    email: string,
+    phone: string,
+    password: string
+  ) => Promise<boolean>;
   logout: () => void;
   updateProfile: (data: Customer) => void;
   setRole: (role: UserRole) => void;
@@ -20,7 +25,7 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'eatnow_auth';
+const AUTH_STORAGE_KEY = "eatnow_auth";
 
 interface StoredAuth {
   user: Customer | null;
@@ -37,7 +42,7 @@ function loadAuthFromStorage(): StoredAuth {
   } catch {
     // Ignore parse errors
   }
-  return { user: null, role: 'guest', token: null };
+  return { user: null, role: "guest", token: null };
 }
 
 function saveAuthToStorage(auth: StoredAuth): void {
@@ -53,122 +58,149 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = loadAuthFromStorage();
     return {
       user: stored.user,
-      role: stored.user ? 'customer' : 'guest',
+      role: stored.user ? "customer" : "guest",
       isLoggedIn: !!stored.user,
       isLoading: false,
     };
   });
 
-  // Mock login - in production, use real API
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    setState((prev) => ({ ...prev, isLoading: true }));
+  // Login with real API
+  const login = useCallback(
+    async (emailOrPhone: string, password: string): Promise<boolean> => {
+      setState((prev) => ({ ...prev, isLoading: true }));
 
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      try {
+        // Call real API - backend accepts both email and phone in the "email" field
+        const response = await apiClient.post<{
+          id: string;
+          fullName: string;
+          email: string;
+          phone: string;
+          address: string;
+          status: string;
+          createdAt: string;
+          role: string;
+          branchId?: string;
+        }>("/auth/login", { email: emailOrPhone, password });
 
-      // Mock user data - Replace with actual API call
-      // const response = await authService.login({ email, password });
-      
-      // Demo: Create mock user based on email
-      let role: UserRole = 'customer';
-      if (email.includes('staff')) {
-        role = 'staff';
-      } else if (email.includes('admin') && !email.includes('super')) {
-        role = 'admin';
-      } else if (email.includes('superadmin')) {
-        role = 'superadmin';
+        // Extract token and user data from response
+        const token = response.token;
+        const userData = response.data;
+
+        if (token) {
+          apiClient.setToken(token);
+        }
+
+        // Map role from API to frontend role
+        let role: UserRole = "customer";
+        const apiRole = userData.role?.toLowerCase();
+        if (apiRole === "staff") {
+          role = "staff";
+        } else if (apiRole === "admin") {
+          role = "admin";
+        } else if (apiRole === "superadmin") {
+          role = "superadmin";
+        }
+
+        const user: Customer = {
+          id: userData.id,
+          name: userData.fullName,
+          email: userData.email,
+          phone: userData.phone || "",
+          address: userData.address || "",
+          joinedDate: new Date(userData.createdAt),
+          status: userData.status,
+          branchId: userData.branchId || null,
+        };
+
+        const newState = {
+          user,
+          role,
+          isLoggedIn: true,
+          isLoading: false,
+        };
+
+        setState(newState);
+        saveAuthToStorage({ user, role, token: token || "token" });
+
+        toast.success("Đăng nhập thành công!", {
+          description: `Chào mừng ${user.name}`,
+        });
+
+        return true;
+      } catch (error) {
+        setState((prev) => ({ ...prev, isLoading: false }));
+        toast.error("Đăng nhập thất bại", {
+          description: "Email hoặc mật khẩu không đúng",
+        });
+        return false;
       }
+    },
+    []
+  );
 
-      const mockUser: Customer = {
-        id: 'c1',
-        name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-        email: email,
-        phone: '0901234567',
-        address: '123 Nguyễn Huệ, Quận 1, TP.HCM',
-        joinedDate: new Date(),
-      };
+  // Register with API
+  const register = useCallback(
+    async (
+      name: string,
+      email: string,
+      phone: string,
+      _password: string
+    ): Promise<boolean> => {
+      setState((prev) => ({ ...prev, isLoading: true }));
 
-      const newState = {
-        user: mockUser,
-        role,
-        isLoggedIn: true,
-        isLoading: false,
-      };
+      try {
+        // TODO: Call real register API when available
+        // const response = await apiClient.post('/auth/register', { name, email, phone, password: _password });
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-      setState(newState);
-      saveAuthToStorage({ user: mockUser, role, token: 'mock_token' });
-      
-      toast.success('Đăng nhập thành công!', {
-        description: `Chào mừng ${mockUser.name}`,
-      });
+        const newUser: Customer = {
+          id: "c" + Date.now(),
+          name,
+          email,
+          phone,
+          joinedDate: new Date(),
+        };
 
-      return true;
-    } catch (error) {
-      setState((prev) => ({ ...prev, isLoading: false }));
-      toast.error('Đăng nhập thất bại', {
-        description: 'Email hoặc mật khẩu không đúng',
-      });
-      return false;
-    }
-  }, []);
+        const newState = {
+          user: newUser,
+          role: "customer" as UserRole,
+          isLoggedIn: true,
+          isLoading: false,
+        };
 
-  // Mock register - in production, use real API
-  const register = useCallback(async (
-    name: string,
-    email: string,
-    phone: string,
-    password: string
-  ): Promise<boolean> => {
-    setState((prev) => ({ ...prev, isLoading: true }));
+        setState(newState);
+        saveAuthToStorage({
+          user: newUser,
+          role: "customer",
+          token: "mock_token",
+        });
 
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
+        toast.success("Đăng ký thành công!", {
+          description: `Chào mừng ${newUser.name} đến với EATNOW`,
+        });
 
-      // const response = await authService.register({ name, email, phone, password });
-
-      const newUser: Customer = {
-        id: 'c' + Date.now(),
-        name,
-        email,
-        phone,
-        joinedDate: new Date(),
-      };
-
-      const newState = {
-        user: newUser,
-        role: 'customer' as UserRole,
-        isLoggedIn: true,
-        isLoading: false,
-      };
-
-      setState(newState);
-      saveAuthToStorage({ user: newUser, role: 'customer', token: 'mock_token' });
-      
-      toast.success('Đăng ký thành công!', {
-        description: `Chào mừng ${newUser.name} đến với EATNOW`,
-      });
-
-      return true;
-    } catch (error) {
-      setState((prev) => ({ ...prev, isLoading: false }));
-      toast.error('Đăng ký thất bại', {
-        description: 'Vui lòng thử lại sau',
-      });
-      return false;
-    }
-  }, []);
+        return true;
+      } catch (error) {
+        setState((prev) => ({ ...prev, isLoading: false }));
+        toast.error("Đăng ký thất bại", {
+          description: "Vui lòng thử lại sau",
+        });
+        return false;
+      }
+    },
+    []
+  );
 
   const logout = useCallback(() => {
     setState({
       user: null,
-      role: 'guest',
+      role: "guest",
       isLoggedIn: false,
       isLoading: false,
     });
     clearAuthFromStorage();
-    toast.info('Đã đăng xuất');
+    toast.info("Đã đăng xuất");
   }, []);
 
   const updateProfile = useCallback((data: Customer) => {
@@ -178,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }));
     const stored = loadAuthFromStorage();
     saveAuthToStorage({ ...stored, user: data });
-    toast.success('Cập nhật thông tin thành công');
+    toast.success("Cập nhật thông tin thành công");
   }, []);
 
   const setRole = useCallback((role: UserRole) => {
@@ -200,7 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }
